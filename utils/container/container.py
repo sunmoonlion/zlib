@@ -5,7 +5,7 @@ import paramiko
 import os
 
 
-class StartContainer:
+class UpContainer:
     def __init__(self, local_yml_path, service_name=None, remote_host=None, remote_user=None, remote_password=None,
                  location_type='local', remote_yml_dir=None, max_attempts=10, sleep_time=5):
         self.remote_host = remote_host
@@ -24,31 +24,31 @@ class StartContainer:
         with open(self.local_yml_path, "r") as config_file:
             self.config = yaml.safe_load(config_file)
 
-    def start_databases(self):
+    def up_databases(self):
         # 启动指定的服务或所有服务
         if self.service_name is None:
-            self.start_all_databases()
+            self.up_all_databases()
         elif isinstance(self.service_name, str):
-            self.start_database(self.service_name)
+            self.up_database(self.service_name)
         elif isinstance(self.service_name, list):
             if self.service_name:
                 for name in self.service_name:
-                    self.start_database(name)
+                    self.up_database(name)
             else:
                 self.start_all_databases()
         else:
             raise ValueError("Invalid service_name type. Must be a string or a list of strings or None.")
 
-    def start_database(self, name):
+    def up_database(self, name):
         # 启动特定的服务
         if self.location_type == 'remote':
-            self.start_database_remote(name)
+            self.up_database_remote(name)
         elif self.location_type == 'local':
-            self.start_database_local(name)
+            self.up_database_local(name)
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
-    def start_database_remote(self, name):
+    def up_database_remote(self, name):
         # 在远程主机上启动特定的服务
         print("Creating directory on remote host...")
         self.execute_ssh_command(f"mkdir -p {self.remote_yml_dir}")
@@ -64,7 +64,7 @@ class StartContainer:
             print(f"Failed to start {name} database: Database is not ready.")
             return
 
-    def start_database_local(self, name):
+    def up_database_local(self, name):
         # 在本地启动特定的服务
         print(f"Starting local {name} database...")
         subprocess.run(["sudo", "docker-compose", "-f", self.local_yml_path, "up", "-d", name],
@@ -74,7 +74,7 @@ class StartContainer:
             print(f"Failed to start local {name} database: Database is not ready.")
             return
 
-    def start_all_databases(self):
+    def up_all_databases(self):
         # 启动所有服务
         if self.location_type == 'remote':
             print("Starting all databases on remote host...")
