@@ -178,6 +178,7 @@ class Container:
                  location_type='local', max_attempts=10, sleep_time=5):
         self.local_path = local_path
         self.remote_path = remote_path
+        self.service_name = service_name
         self.remote_host = remote_host
         self.remote_user = remote_user
         self.remote_password = remote_password
@@ -315,6 +316,7 @@ class Container:
         error = stderr.read().decode('utf-8')
         return output, error
 
+
 if __name__ == "__main__":
     remote_host = "47.103.135.26"
     remote_user = "zym"
@@ -323,13 +325,40 @@ if __name__ == "__main__":
     local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
     remote_path = "/home/zym/container"
 
+    # 定义DAN个服务名称
     service_name_single = "db_master"
-    
-    db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
-                                      remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
-    db_local_single.up_service(service_name_single)
 
-    db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
-                                      remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                      location_type='remote')
-    db_remote_single.up_service(service_name_single)
+    # 定义多个服务名称
+    service_names_batch_local = ["db_slave", "tracker", "storage"]
+
+    # # 创建本地实例并启动单个服务
+    # db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_local_single.up_services()
+
+    # # 创建远程实例并启动单个服务
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.up_services()
+
+    # 创建本地实例并启动批量服务
+    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch_local,
+                                remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    db_remote_batch.up_services()
+
+    # 创建远程实例并启动批量服务
+    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch_local,
+                                remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                location_type='remote')
+    db_remote_batch.up_services()
+
+    # # 创建不指定服务名称的本地实例以启动所有服务
+    # db_local_all = Container(local_path=local_path, remote_path=remote_path)
+    # db_local_all.up_services()
+
+    # # 创建不指定服务名称的远程实例以启动所有服务
+    # db_remote_all = Container(local_path=local_path, remote_path=remote_path,remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_all.up_services()
+

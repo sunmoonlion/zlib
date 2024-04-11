@@ -686,136 +686,20 @@ class RemoveVolume:
 
 
 if __name__ == "__main__":
-    # 定义远程主机和凭据
     remote_host = "47.103.135.26"
     remote_user = "zym"
     remote_password = "alyfwqok"
 
-    # 定义本地YAML文件路径和远程YAML目录
-    local_yml_path = "/home/WUYING_13701819268_15611880/Desktop/docker-compose.yml"
-    remote_yml_dir = "/home/zym/container"
+    local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
+    remote_path = "/home/zym/container"
 
-    # 定义单个服务名称
     service_name_single = "db_master"
     
-    # 定义多个服务名称
-    service_names_batch_local = ["db_slave", "tracker", "storage"]
-    
-    # 创建本地实例并启动单个服务
-    db_local_single = UpContainer(local_yml_path=local_yml_path, service_name=service_name_single)
-    db_local_single.up_databases()
+    db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+                                      remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    db_local_single.up_services()
 
-    # 创建远程实例并启动单个服务
-    db_remote_single = UpContainer(local_yml_path=local_yml_path, service_name=service_name_single,
+    db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
                                       remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                      location_type='remote', remote_yml_dir=remote_yml_dir)
-    db_remote_single.up_databases()
-
-    # 创建本地实例并启动批量服务
-    db_local_batch = UpContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local)
-    db_local_batch.up_databases()
-
-    # 创建远程实例并启动批量服务
-    db_remote_batch = UpContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local,
-                                     remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                     location_type='remote', remote_yml_dir=remote_yml_dir)
-    db_remote_batch.up_databases()
-
-    # 创建不指定服务名称的实例以启动所有服务
-    db_local_all = UpContainer(local_yml_path=local_yml_path)
-    db_local_all.up_databases()
-
-    # 创建不指定服务名称的远程实例以启动所有服务
-    db_remote_all = UpContainerr(local_yml_path=local_yml_path, remote_host=remote_host, remote_user=remote_user,
-                                    remote_password=remote_password, location_type='remote', remote_yml_dir=remote_yml_dir)
-    db_remote_all.up_databases()
-    
-    
-    # 创建本地实例并停止单个服务
-    stop_db_local_single = StopContainer(local_yml_path=local_yml_path, service_name=service_name_single)
-    stop_db_local_single.stop_services()
-
-    # 创建远程实例并停止单个服务
-    stop_db_remote_single = StopContainer(local_yml_path=local_yml_path, service_name=service_name_single,
-                                          remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                          location_type='remote', remote_yml_dir=remote_yml_dir)
-    stop_db_remote_single.stop_services()
-
-    # 创建本地实例并停止批量服务
-    stop_db_local_batch = StopContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local)
-    stop_db_local_batch.stop_services()
-
-    # 创建远程实例并停止批量服务
-    stop_db_remote_batch = StopContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local,
-                                          remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                          location_type='remote', remote_yml_dir=remote_yml_dir)
-    stop_db_remote_batch.stop_services()
-
-    # 创建不指定服务名称的本地实例以停止所有服务
-    stop_db_local_all = StopContainer(local_yml_path=local_yml_path)
-    stop_db_local_all.stop_services()
-
-    # 创建不指定服务名称的远程实例以停止所有服务
-    stop_db_remote_all = StopContainer(local_yml_path=local_yml_path, remote_host=remote_host, remote_user=remote_user,
-                                        remote_password=remote_password, location_type='remote', remote_yml_dir=remote_yml_dir)
-    stop_db_remote_all.stop_services()
-
-
-    # 创建本地实例并移除单个服务
-    down_db_local_single = DownContainer(local_yml_path=local_yml_path, service_name=service_name_single)
-    down_db_local_single.down_containers()
-
-    # 创建远程实例并移除单个服务
-    down_db_remote_single = DownContainer(local_yml_path=local_yml_path, service_name=service_name_single,
-                                          remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                          location_type='remote', remote_yml_dir=remote_yml_dir)
-    down_db_remote_single.down_containers()
-
-    # 创建本地实例并移除批量服务
-    down_db_local_batch = DownContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local)
-    down_db_local_batch.down_containers()
-
-    # 创建远程实例并移除批量服务
-    down_db_remote_batch = DownContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local,
-                                          remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                          location_type='remote', remote_yml_dir=remote_yml_dir)
-    down_db_remote_batch.down_containers()
-
-    # 创建不指定服务名称的本地实例以移除所有服务
-    down_db_local_all = DownContainer(local_yml_path=local_yml_path)
-    down_db_local_all.down_containers()
-
-    # 创建不指定服务名称的远程实例以移除所有服务
-    down_db_remote_all = DownContainer(local_yml_path=local_yml_path, remote_host=remote_host, remote_user=remote_user,
-                                        remote_password=remote_password, location_type='remote', remote_yml_dir=remote_yml_dir)
-    down_db_remote_all.down_containers()
-    
-    
-    # 创建本地实例并移除单个服务的挂载卷
-    volume_local_single = RemoveVolume(local_yml_path=local_yml_path, service_name="service1")
-    volume_local_single.remove_volumes()
-
-    # 创建远程实例并移除单个服务的挂载卷
-    volume_remote_single = RemoveVolume(local_yml_path=local_yml_path, service_name="service1",
-                                        remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                        location_type='remote')
-    volume_remote_single.remove_volumes()
-
-    # 创建本地实例并移除多个服务的挂载卷
-    volume_local_batch = RemoveVolume(local_yml_path=local_yml_path, service_name=["service1", "service2", "service3"])
-    volume_local_batch.remove_volumes()
-
-    # 创建远程实例并移除多个服务的挂载卷
-    volume_remote_batch = RemoveVolume(local_yml_path=local_yml_path, service_name=["service1", "service2", "service3"],
-                                        remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                        location_type='remote')
-    volume_remote_batch.remove_volumes()
-
-    # 创建本地实例并移除所有服务的挂载卷
-    volume_local_all = RemoveVolume(local_yml_path=local_yml_path)
-    volume_local_all.remove_volumes()
-
-    # 创建远程实例并移除所有服务的挂载卷
-    volume_remote_all = RemoveVolume(local_yml_path=local_yml_path, remote_host=remote_host, remote_user=remote_user,
-                                    remote_password=remote_password, location_type='remote')
-    volume_remote_all.remove_volumes()
+                                      location_type='remote')
+    db_remote_single.up_services()
