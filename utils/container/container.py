@@ -2,12 +2,198 @@ import subprocess
 import time
 import yaml
 import paramiko
-import os
+import stat
+from concurrent.futures import ThreadPoolExecutor
+
+class SSHSingleton:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._ssh = None
+        return cls._instance
+
+    def connect(self, host, username, password):
+        if self._ssh is None or not self._ssh.get_transport().is_active():
+            self._ssh = paramiko.SSHClient()
+            self._ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self._ssh.connect(host, username=username, password=password)
+
+    def get_ssh(self):
+        return self._ssh
+
+    def close(self):
+        if self._ssh is not None:
+            self._ssh.close()
+            self._ssh = None
+
+class FileTransfer: 
+    def __init__(self, remote_host, remote_user, remote_password):
+        self.remote_host = remote_host
+        self.remote_user = remote_user
+        self.remote_password = remote_password
+        self.ssh_singleton = SSHSingleton()
+
+    def _establish_ssh_connection(self):
+        self.ssh_singleton.connect(self.remote_host, self.remote_user, self.remote_password)
+
+    def _normalize_path(self, path, is_directory):
+        # 规范化路径，确保以斜杠结尾（对目录）或不以斜杠结尾（对文件）
+        normalized_path = os.path.normpath(path)
+        if is_directory:
+            if not normalized_path.endswith('/'):
+                normalized_path += '/'
+        else:
+            if normalized_path.endswith('/'):
+                normalized_path = normalized_path[:-1]
+        return normalized_path
 
 
-class UpContainer:
-    def __init__(self, local_yml_path, service_name=None, remote_host=None, remote_user=None, remote_password=None,
-                 location_type='local', remote_yml_dir=None, max_attempts=10, sleep_time=5):
+    def create_remote_directory(self, remote_path):
+        self._establish_ssh_connection()
+        ssh = self.ssh_singleton.get_ssh()
+        stdin, stdout, stderr = ssh.exec_command(f"mkdir -p {remote_path}")
+        if stderr.read().strip():
+            raise RuntimeError(f"Failed to create remote directory {remote_path}")
+
+    def _get_directory_structure(self, dir_path):
+        dirs = [] 
+        for root, _, _ in os.walk(dir_path):
+            dirs.append(os.path.relpath(root, dir_path))
+        return dirs
+
+    def _create_remote_directory_structure(self, local_dirs, remote_path):
+        self._establish_ssh_connection()
+        ssh = self.ssh_singleton.get_ssh()
+        for dir in local_dirs:
+            remote_dir = os.path.join(remote_path, dir)
+            self.create_remote_directory(remote_dir)
+            
+    def _upload_file(self, local_file_path, remote_file_path):
+        self._establish_ssh_connection()
+        ssh = self.ssh_singleton.get_ssh()
+        sftp = ssh.open_sftp()
+        try:
+            sftp.put(local_file_path, remote_file_path)
+        finally:
+            sftp.close()
+
+    def _upload_directory(self, local_path, remote_path):
+        self._establish_ssh_connection()
+        ssh = self.ssh_singleton.get_ssh()
+        sftp = ssh.open_sftp()
+        try:
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                for root, dirs, files in os.walk(local_path):
+                    for file in files:
+                        local_file_path = os.path.join(root, file)
+                        remote_file_path = os.path.join(remote_path, os.path.relpath(local_file_path, local_path))
+                        executor.submit(self._upload_file, local_file_path, remote_file_path)
+        finally:
+            sftp.close()
+
+    def _is_remote_directory(self, sftp, remote_path):
+        try:
+            return stat.S_ISDIR(sftp.stat(remote_path).st_mode)
+        except IOError:
+            return False
+        
+    def upload(self, local_path, remote_path):
+        try:
+            if os.path.isdir(local_path):
+                # 规范化本地和远程路径
+                local_path = self._normalize_path(local_path,is_directory=True)
+                remote_path = self._normalize_path(remote_path,is_directory=True)
+                
+                #处理本地上传目录的结构，便于在远程创建相同的目录结构           
+                local_dirs = self._get_directory_structure(local_path)
+                #当本地上传的是目录时，我们将该目录整体上传，因此，传入的远程目录路径要和本地上传的目录名作拼接
+                remote_folder = os.path.join(remote_path,os.path.basename(local_path[:-1]))
+                
+                #创建一系列的远程目录（与传入的本地文件夹的目录结构相同）            
+                self._create_remote_directory_structure(local_dirs, remote_folder)
+                #上传所有文件
+                self._upload_directory(local_path, remote_folder)
+            else:
+                # 规范化本地和远程路径
+                local_path = self._normalize_path(local_path,is_directory=False)
+                remote_path = self._normalize_path(remote_path,is_directory=False)
+                #创建远程目录
+                self.create_remote_directory(remote_path)
+                #创建远程路径（包含文件名）
+                remote_path = os.path.join(remote_path, os.path.basename(local_path))
+                #上传文件
+                self._upload_file(local_path, remote_path)
+                
+            print("上传成功。")  
+        except RuntimeError as e:
+            print(f"上传失败：{str(e)}")
+            raise e
+        finally:
+            self.ssh_singleton.close()
+
+    def download(self, remote_path, local_path):
+        try:
+            # 下载文件或目录
+            self._establish_ssh_connection()
+            ssh = self.ssh_singleton.get_ssh()
+            sftp = ssh.open_sftp()
+
+            try:
+                # 判断远程路径是文件还是目录
+                if self._is_remote_directory(sftp, remote_path):
+                    
+                    # 如果是目录，先规范化路径
+                    local_path = self._normalize_path(local_path, is_directory=True)
+                    remote_path = self._normalize_path(remote_path, is_directory=True)
+                    # 然后下载目录及其内容
+                    self._download_directory(sftp, remote_path, local_path)
+                else:
+                    # 如果是文件，直接下载
+                    self._download_file(sftp, remote_path, local_path)
+                    print("下载成功。")
+            finally:
+                sftp.close()
+        except RuntimeError as e:
+            print(f"下载失败：{str(e)}")
+            raise e
+        finally:
+            self.ssh_singleton.close()
+
+    def _download_file(self, sftp, remote_path, local_dir):
+        # 获取远程文件名
+        remote_filename = os.path.basename(remote_path)
+        # 构建本地文件路径
+        local_path = os.path.join(local_dir, remote_filename)
+        # 下载单个文件
+        sftp.get(remote_path, local_path)
+
+
+    def _download_directory(self, sftp, remote_path, local_dir):
+        # 获取远程文件夹下的文件和子目录
+        files_and_directories = sftp.listdir_attr(remote_path)
+        for item in files_and_directories:
+            item_name = item.filename
+            remote_item_path = os.path.join(remote_path, item_name)
+            local_item_path = os.path.join(local_dir, item_name)
+            # 如果是目录，则递归下载
+            if stat.S_ISDIR(item.st_mode):
+                # 创建本地目录
+                os.makedirs(local_item_path, exist_ok=True)
+                # 递归下载子目录
+                self._download_directory(sftp, remote_item_path, local_item_path)
+            else:
+                # 如果是文件，则下载到指定本地目录
+                self._download_file(sftp, remote_item_path, local_dir)
+
+
+
+class Container:
+    def __init__(self, local_path, service_name=None, remote_host=None, remote_user=None, remote_password=None,
+                 location_type='local', remote_path=None, max_attempts=10, sleep_time=5):
+        self.local_path = local_path
+        self.remote_path = remote_path
         self.remote_host = remote_host
         self.remote_user = remote_user
         self.remote_password = remote_password
@@ -19,12 +205,20 @@ class UpContainer:
         self.sleep_time = sleep_time
         self.load_config()
 
+    def load_file(self):
+        # 上传文件或文件夹
+        load_file = FileTransfer(self.remote_host, self.remote_user, self.remote_password)
+        load_file.upload(self.local_path, self.remote_item)
+        
+    def get_local_yml_path(self):
+        pass
+    
     def load_config(self):
         # 加载本地YAML文件中的配置
         with open(self.local_yml_path, "r") as config_file:
-            self.config = yaml.safe_load(config_file)
-
-    def up_databases(self):
+            self.config = yaml.safe_load(config_file)    
+    
+    def up_services(self):
         # 启动指定的服务或所有服务
         if self.service_name is None:
             self.up_all_databases()
@@ -39,7 +233,7 @@ class UpContainer:
         else:
             raise ValueError("Invalid service_name type. Must be a string or a list of strings or None.")
 
-    def up_database(self, name):
+    def up_service(self, name):
         # 启动特定的服务
         if self.location_type == 'remote':
             self.up_database_remote(name)
@@ -48,7 +242,7 @@ class UpContainer:
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
-    def up_database_remote(self, name):
+    def up_service_remote(self, name):
         # 在远程主机上启动特定的服务
         print("Creating directory on remote host...")
         self.execute_ssh_command(f"mkdir -p {self.remote_yml_dir}")
@@ -64,7 +258,7 @@ class UpContainer:
             print(f"Failed to start {name} database: Database is not ready.")
             return
 
-    def up_database_local(self, name):
+    def up_service_local(self, name):
         # 在本地启动特定的服务
         print(f"Starting local {name} database...")
         subprocess.run(["sudo", "docker-compose", "-f", self.local_yml_path, "up", "-d", name],
@@ -74,7 +268,7 @@ class UpContainer:
             print(f"Failed to start local {name} database: Database is not ready.")
             return
 
-    def up_all_databases(self):
+    def up_all_services(self):
         # 启动所有服务
         if self.location_type == 'remote':
             print("Starting all databases on remote host...")
@@ -87,13 +281,13 @@ class UpContainer:
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
-    def wait_for_db_ready(self, name):
+    def wait_for_container_ready(self, name):
         # 等待服务就绪
-        print("Waiting for database to be ready...")
+        print("Waiting for container to be ready...")
         for attempt in range(1, self.max_attempts + 1):
             print(f"Attempt {attempt}/{self.max_attempts}")
             time.sleep(self.sleep_time)
-            if self.check_database(name):
+            if self.check_container(name):
                 print("Database is ready.")
                 return True
             else:
@@ -101,7 +295,7 @@ class UpContainer:
         print("Database is not ready after {} attempts.".format(self.max_attempts))
         return False
 
-    def check_database(self, name):
+    def check_container(self, name):
         # 检查服务是否运行
         container_name = self.config['services'][name]['container_name']
         if self.location_type == 'remote':
@@ -129,16 +323,6 @@ class UpContainer:
         error = stderr.read().decode('utf-8')
         ssh.close()
         return output, error
-
-    def upload_file(self, local_path, remote_path):
-        # 通过SSH上传文件到远程主机
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(self.remote_host, username=self.remote_user, password=self.remote_password)
-        sftp = ssh.open_sftp()
-        sftp.put(local_path, remote_path)
-        sftp.close()
-        ssh.close()
 
 
 class StopContainer:
@@ -498,3 +682,140 @@ class RemoveVolume:
         ssh.close()
         return output, error
 
+
+
+
+if __name__ == "__main__":
+    # 定义远程主机和凭据
+    remote_host = "47.103.135.26"
+    remote_user = "zym"
+    remote_password = "alyfwqok"
+
+    # 定义本地YAML文件路径和远程YAML目录
+    local_yml_path = "/home/WUYING_13701819268_15611880/Desktop/docker-compose.yml"
+    remote_yml_dir = "/home/zym/container"
+
+    # 定义单个服务名称
+    service_name_single = "db_master"
+    
+    # 定义多个服务名称
+    service_names_batch_local = ["db_slave", "tracker", "storage"]
+    
+    # 创建本地实例并启动单个服务
+    db_local_single = UpContainer(local_yml_path=local_yml_path, service_name=service_name_single)
+    db_local_single.up_databases()
+
+    # 创建远程实例并启动单个服务
+    db_remote_single = UpContainer(local_yml_path=local_yml_path, service_name=service_name_single,
+                                      remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                      location_type='remote', remote_yml_dir=remote_yml_dir)
+    db_remote_single.up_databases()
+
+    # 创建本地实例并启动批量服务
+    db_local_batch = UpContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local)
+    db_local_batch.up_databases()
+
+    # 创建远程实例并启动批量服务
+    db_remote_batch = UpContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local,
+                                     remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                     location_type='remote', remote_yml_dir=remote_yml_dir)
+    db_remote_batch.up_databases()
+
+    # 创建不指定服务名称的实例以启动所有服务
+    db_local_all = UpContainer(local_yml_path=local_yml_path)
+    db_local_all.up_databases()
+
+    # 创建不指定服务名称的远程实例以启动所有服务
+    db_remote_all = UpContainerr(local_yml_path=local_yml_path, remote_host=remote_host, remote_user=remote_user,
+                                    remote_password=remote_password, location_type='remote', remote_yml_dir=remote_yml_dir)
+    db_remote_all.up_databases()
+    
+    
+    # 创建本地实例并停止单个服务
+    stop_db_local_single = StopContainer(local_yml_path=local_yml_path, service_name=service_name_single)
+    stop_db_local_single.stop_services()
+
+    # 创建远程实例并停止单个服务
+    stop_db_remote_single = StopContainer(local_yml_path=local_yml_path, service_name=service_name_single,
+                                          remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                          location_type='remote', remote_yml_dir=remote_yml_dir)
+    stop_db_remote_single.stop_services()
+
+    # 创建本地实例并停止批量服务
+    stop_db_local_batch = StopContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local)
+    stop_db_local_batch.stop_services()
+
+    # 创建远程实例并停止批量服务
+    stop_db_remote_batch = StopContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local,
+                                          remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                          location_type='remote', remote_yml_dir=remote_yml_dir)
+    stop_db_remote_batch.stop_services()
+
+    # 创建不指定服务名称的本地实例以停止所有服务
+    stop_db_local_all = StopContainer(local_yml_path=local_yml_path)
+    stop_db_local_all.stop_services()
+
+    # 创建不指定服务名称的远程实例以停止所有服务
+    stop_db_remote_all = StopContainer(local_yml_path=local_yml_path, remote_host=remote_host, remote_user=remote_user,
+                                        remote_password=remote_password, location_type='remote', remote_yml_dir=remote_yml_dir)
+    stop_db_remote_all.stop_services()
+
+
+    # 创建本地实例并移除单个服务
+    down_db_local_single = DownContainer(local_yml_path=local_yml_path, service_name=service_name_single)
+    down_db_local_single.down_containers()
+
+    # 创建远程实例并移除单个服务
+    down_db_remote_single = DownContainer(local_yml_path=local_yml_path, service_name=service_name_single,
+                                          remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                          location_type='remote', remote_yml_dir=remote_yml_dir)
+    down_db_remote_single.down_containers()
+
+    # 创建本地实例并移除批量服务
+    down_db_local_batch = DownContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local)
+    down_db_local_batch.down_containers()
+
+    # 创建远程实例并移除批量服务
+    down_db_remote_batch = DownContainer(local_yml_path=local_yml_path, service_name=service_names_batch_local,
+                                          remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                          location_type='remote', remote_yml_dir=remote_yml_dir)
+    down_db_remote_batch.down_containers()
+
+    # 创建不指定服务名称的本地实例以移除所有服务
+    down_db_local_all = DownContainer(local_yml_path=local_yml_path)
+    down_db_local_all.down_containers()
+
+    # 创建不指定服务名称的远程实例以移除所有服务
+    down_db_remote_all = DownContainer(local_yml_path=local_yml_path, remote_host=remote_host, remote_user=remote_user,
+                                        remote_password=remote_password, location_type='remote', remote_yml_dir=remote_yml_dir)
+    down_db_remote_all.down_containers()
+    
+    
+    # 创建本地实例并移除单个服务的挂载卷
+    volume_local_single = RemoveVolume(local_yml_path=local_yml_path, service_name="service1")
+    volume_local_single.remove_volumes()
+
+    # 创建远程实例并移除单个服务的挂载卷
+    volume_remote_single = RemoveVolume(local_yml_path=local_yml_path, service_name="service1",
+                                        remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                        location_type='remote')
+    volume_remote_single.remove_volumes()
+
+    # 创建本地实例并移除多个服务的挂载卷
+    volume_local_batch = RemoveVolume(local_yml_path=local_yml_path, service_name=["service1", "service2", "service3"])
+    volume_local_batch.remove_volumes()
+
+    # 创建远程实例并移除多个服务的挂载卷
+    volume_remote_batch = RemoveVolume(local_yml_path=local_yml_path, service_name=["service1", "service2", "service3"],
+                                        remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                        location_type='remote')
+    volume_remote_batch.remove_volumes()
+
+    # 创建本地实例并移除所有服务的挂载卷
+    volume_local_all = RemoveVolume(local_yml_path=local_yml_path)
+    volume_local_all.remove_volumes()
+
+    # 创建远程实例并移除所有服务的挂载卷
+    volume_remote_all = RemoveVolume(local_yml_path=local_yml_path, remote_host=remote_host, remote_user=remote_user,
+                                    remote_password=remote_password, location_type='remote')
+    volume_remote_all.remove_volumes()
