@@ -171,8 +171,6 @@ class FileTransfer:
                 self._download_file(sftp, remote_item_path, local_dir)
         
 
-
-
 class Container:
     def __init__(self, local_path, remote_path, service_name=None, remote_host=None, remote_user=None, remote_password=None,
                  location_type='local', max_attempts=10, sleep_time=5):
@@ -186,7 +184,7 @@ class Container:
         self.max_attempts = max_attempts
         self.sleep_time = sleep_time
         self.load_config()
-        self.ssh_singleton = SSHSingleton()  # 添加单例模式
+        self.ssh_singleton = SSHSingleton()
 
     def _establish_ssh_connection(self):
         self.ssh_singleton.connect(self.remote_host, self.remote_user, self.remote_password)
@@ -235,7 +233,6 @@ class Container:
         else:
             raise ValueError("Invalid service_name type. Must be a string or a list of strings or None.")
 
-       
     def up_service(self, name):
         if self.location_type == 'remote':
             self.up_service_remote(name)
@@ -245,7 +242,6 @@ class Container:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
     def up_service_remote(self, name):
-              
         print(f"Starting {name} service...")
         command = f"cd {os.path.dirname(self.get_remote_yml_path())} && sudo docker-compose -f {self.get_remote_yml_path()} up -d {name}"
         self.execute_ssh_command(command)
@@ -277,13 +273,12 @@ class Container:
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
-
     def wait_for_container_ready(self, name):
         print("Waiting for container to be ready...")
         for attempt in range(1, self.max_attempts + 1):
             print(f"Attempt {attempt}/{self.max_attempts}")
             time.sleep(self.sleep_time)
-            if self.check_container(name):
+            if self.check_status(name, 'up'):
                 print("Database is ready.")
                 return True
             else:
@@ -291,17 +286,23 @@ class Container:
         print("Database is not ready after {} attempts.".format(self.max_attempts))
         return False
 
-    def check_container(self, name):
-        container_name = self.config['services'][name]['container_name']
+    def check_status(self, name, action):
+        if action == 'up':
+            command = ["sudo", "docker", "ps", "-a", "--filter", f"name={name}", "--format", "{{.Names}}"]
+        elif action == 'removed':
+            command = ["sudo", "docker", "ps", "-a", "--filter", f"name={name}", "--format", "{{.Names}}"]
+        elif action == 'stopped':
+            command = ["sudo", "docker", "ps", "--filter", f"name={name}", "--format", "{{.Names}}"]
+        else:
+            raise ValueError("Invalid action. Must be 'up', 'removed' or 'stopped'.")
+        
         if self.location_type == 'remote':
-            stdout, stderr = self.execute_ssh_command(f"sudo docker ps | grep {container_name} | awk '{{print $NF}}'")
-            if container_name in stdout:
+            stdout, stderr = self.execute_ssh_command(" ".join(command))
+            if name in stdout:
                 return True
         elif self.location_type == 'local':
-            result = subprocess.run(
-                ["sudo", "docker", "ps", "--filter", f"name={container_name}", "--format", "{{.Names}}"],
-                capture_output=True, text=True)
-            if result.returncode == 0 and container_name in result.stdout:
+            result = subprocess.run(command, capture_output=True, text=True)
+            if result.returncode == 0 and name in result.stdout:
                 return True
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
@@ -317,6 +318,151 @@ class Container:
         return output, error
 
 
+    def stop_services(self):
+        # 停止指定的服务或所有服务
+        if self.service_name is None:
+            self.stop_all_services()
+        elif isinstance(self.service_name, str):
+            self.stop_service(self.service_name)
+        elif isinstance(self.service_name, list):
+            if self.service_name:
+                for name in self.service_name:
+                    self.stop_service(name)
+            else:
+                self.stop_all_services()
+        else:
+            raise ValueError("Invalid service_name type. Must be a string or a list of strings or None.")
+
+    def stop_service(self, name):
+        if self.location_type == 'remote':
+            self.stop_service_remote(name)
+        elif self.location_type == 'local':
+            self.stop_service_local(name)
+        else:
+            raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
+
+    def stop_service_remote(self, name):
+        print(f"Stopping {name} service...")
+        command = f"cd {os.path.dirname(self.get_remote_yml_path())} && sudo docker-compose -f {self.get_remote_yml_path()} stop {name}"
+        self.execute_ssh_command(command)
+
+        if name is not None and not self.wait_for_container_stopped(name):
+            print(f"Failed to stop {name} database.")
+
+    def stop_service_local(self, name):
+        print(f"Stopping local {name} database...")
+        subprocess.run(["sudo", "docker-compose", "-f", self.get_local_yml_path(), "stop", name],
+                       cwd=os.path.dirname(self.get_local_yml_path()))
+
+        if name is not None and not self.wait_for_container_stopped(name):
+            print(f"Failed to stop local {name} database.")
+
+    def stop_all_services(self):
+        # 停止所有服务
+        if self.location_type == 'remote':
+            print("Stopping all service on remote host...")
+            command = f"cd {self.remote_path} && sudo docker-compose -f {os.path.basename(self.get_local_yml_path())} stop"
+            self.execute_ssh_command(command)
+        elif self.location_type == 'local':
+            print("Stopping all local service...")
+            subprocess.run(["sudo", "docker-compose", "-f", self.get_local_yml_path(), "stop"],
+                           cwd=os.path.dirname(self.get_local_yml_path()))
+        else:
+            raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
+
+    def wait_for_container_stopped(self, name):
+        print("Waiting for container to be stopped...")
+        for attempt in range(1, self.max_attempts + 1):
+            print(f"Attempt {attempt}/{self.max_attempts}")
+            time.sleep(self.sleep_time)
+            if not self.check_status(name,'stopped'):
+                print("container is stopped.")
+                return True
+            else:
+                print("container is still running.")
+        print("Database is still running after {} attempts.".format(self.max_attempts))
+        return False
+
+    def down_services(self, remove_volumes=True):
+        # 移除指定的服务或所有服务
+        if self.service_name is None:
+            self.down_all_services(remove_volumes=remove_volumes)
+        elif isinstance(self.service_name, str):
+            self.down_service(self.service_name, remove_volumes=remove_volumes)
+        elif isinstance(self.service_name, list):
+            if self.service_name:
+                for name in self.service_name:
+                    self.down_service(name, remove_volumes=remove_volumes)
+            else:
+                self.down_all_services(remove_volumes=remove_volumes)
+        else:
+            raise ValueError("Invalid service_name type. Must be a string or a list of strings or None.")
+
+    def down_service(self, name, remove_volumes=True):
+        if self.location_type == 'remote':
+            self.down_service_remote(name, remove_volumes=remove_volumes)
+        elif self.location_type == 'local':
+            self.down_service_local(name, remove_volumes=remove_volumes)
+        else:
+            raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
+
+    def down_service_remote(self, name, remove_volumes=True):
+        print(f"Removing {name} service containers...")
+        # Remove the service containers
+        command = (f"cd {os.path.dirname(self.get_remote_yml_path())} && "
+                   f"sudo docker-compose -f {self.get_remote_yml_path()} down --remove-orphans {name}")
+        self.execute_ssh_command(command)
+        
+        if remove_volumes:
+            # Remove the volumes associated with the service
+            print(f"Removing volumes associated with {name} service...")
+            command = (f"sudo docker volume prune --filter label=com.docker.compose.project={name}")
+            subprocess.run(command)
+
+        if name is not None and not self.wait_for_container_removed(name):
+            print(f"{name} service containers may not have been completely removed.")
+
+    def down_service_local(self, name, remove_volumes=True):
+        print(f"Removing local {name} database containers...")
+        # Remove the service containers
+        command = ["sudo", "docker-compose", "-f", self.get_local_yml_path(), "down", "--remove-orphans", name]
+        self.execute_ssh_command(command)
+        
+        if remove_volumes:
+            # Remove the volumes associated with the service
+            print(f"Removing volumes associated with {name} service...")
+            command = (f"sudo docker volume prune --filter label=com.docker.compose.project={name}")
+            subprocess.run(command)
+
+        if not self.wait_for_container_removed(name):
+            print(f"Local {name} database containers may not have been completely removed.")
+
+    def down_all_services(self, remove_volumes=True):
+        if self.location_type == 'remote':
+            print("Removing all databases on remote host...")
+            command = f"cd {self.remote_path} && sudo docker-compose -f {os.path.basename(self.get_remote_yml_path())} down --remove-orphans"
+            self.execute_ssh_command(command)
+        elif self.location_type == 'local':
+            print("Removing all local databases...")
+            command = ["sudo", "docker-compose", "-f", self.get_local_yml_path(), "down", "--remove-orphans"]
+            self.execute_ssh_command(command)
+        else:
+            raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
+
+    def wait_for_container_removed(self, name):
+        print("Waiting for container to be removed...")
+        for attempt in range(1, self.max_attempts + 1):
+            print(f"Attempt {attempt}/{self.max_attempts}")
+            time.sleep(self.sleep_time)
+            if not self.check_status(name, 'removed'):
+                print("container is removed.")
+                return True
+            else:
+                print("container is still running.")
+        print("Database is not ready after {} attempts.".format(self.max_attempts))
+        return False
+
+
 if __name__ == "__main__":
     remote_host = "47.103.135.26"
     remote_user = "zym"
@@ -329,7 +475,7 @@ if __name__ == "__main__":
     service_name_single = "db_master"
 
     # 定义多个服务名称
-    service_names_batch_local = ["db_slave", "tracker", "storage"]
+    service_names_batch = ["db_slave", "tracker", "storage"]
 
     # # 创建本地实例并启动单个服务
     # db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
@@ -342,16 +488,16 @@ if __name__ == "__main__":
     #                                   location_type='remote')
     # db_remote_single.up_services()
 
-    # 创建本地实例并启动批量服务
-    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch_local,
-                                remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
-    db_remote_batch.up_services()
+    # # 创建本地实例并启动批量服务
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_remote_batch.up_services()
 
-    # 创建远程实例并启动批量服务
-    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch_local,
-                                remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                location_type='remote')
-    db_remote_batch.up_services()
+    # # 创建远程实例并启动批量服务
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                             location_type='remote')
+    # db_remote_batch.up_services()
 
     # # 创建不指定服务名称的本地实例以启动所有服务
     # db_local_all = Container(local_path=local_path, remote_path=remote_path)
@@ -362,3 +508,97 @@ if __name__ == "__main__":
     #                                   location_type='remote')
     # db_remote_all.up_services()
 
+    # # 创建本地实例并停止单个服务
+    # db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_local_single.stop_services()
+
+    # # 创建远程实例并停止单个服务
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.stop_services()
+
+    # # 创建本地实例并停止批量服务
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_remote_batch.stop_services()
+
+    # # 创建远程实例并停止批量服务
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                             location_type='remote')
+    # db_remote_batch.stop_services()
+
+    # # 创建不指定服务名称的本地实例以停止所有服务
+    # db_local_all = Container(local_path=local_path, remote_path=remote_path)
+    # db_local_all.stop_services()
+
+    # # 创建不指定服务名称的远程实例以停止所有服务
+    # db_remote_all = Container(local_path=local_path, remote_path=remote_path,remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_all.stop_services()
+    
+    
+    # # 创建本地实例并移除单个服务(而且移除相关数据卷)
+    # db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_local_single.down_services()
+
+    # 创建远程实例并移除单个服务(而且移除相关数据卷)
+    db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+                                      remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                      location_type='remote')
+    db_remote_single.down_services()
+
+    # #创建本地实例并移除批量服务(而且移除相关数据卷)
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_remote_batch.down_services()
+
+    # # #创建远程实例并移除批量服务(而且移除相关数据卷)
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                             location_type='remote')
+    # db_remote_batch.down_services()
+
+    # # 创建不指定服务名称的本地实例以移除所有服务(而且移除相关数据卷)
+    # db_local_all = Container(local_path=local_path, remote_path=remote_path)
+    # db_local_all.down_services()
+
+    # # 创建不指定服务名称的远程实例以移除所有服务(而且移除相关数据卷)
+    # db_remote_all = Container(local_path=local_path, remote_path=remote_path,remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_all.down_services()
+    
+    # # 创建本地实例并移除单个服务(但不移除相关数据卷)
+    # db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_local_single.down_services(remove_volumes=False)
+
+    # # 创建远程实例并移除单个服务(但不移除相关数据卷)
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.down_services(remove_volumes=False)
+
+    # # 创建本地实例并移除批量服务(但不移除相关数据卷)
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_remote_batch.down_services(remove_volumes=False)
+
+    # #创建远程实例并移除批量服务(但不移除相关数据卷)
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                             location_type='remote')
+    # db_remote_batch.down_services(remove_volumes=False)
+
+    # # 创建不指定服务名称的本地实例以移除所有服务(但不移除相关数据卷)
+    # db_local_all = Container(local_path=local_path, remote_path=remote_path)
+    # db_local_all.down_services(remove_volumes=False)
+
+    # # 创建不指定服务名称的远程实例以移除所有服务(但不移除相关数据卷)
+    # db_remote_all = Container(local_path=local_path, remote_path=remote_path,remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_all.down_services(remove_volumes=False)
+    
