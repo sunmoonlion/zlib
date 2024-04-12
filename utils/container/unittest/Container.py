@@ -400,24 +400,47 @@ class Container:
 
     def down_service(self, name, remove_volumes=True):
         if self.location_type == 'remote':
-            self.down_service_remote(name, remove_volumes=remove_volumes)
+            self.down_service_remote(name, remove_volumes)
         elif self.location_type == 'local':
-            self.down_service_local(name, remove_volumes=remove_volumes)
+            self.down_service_local(name, remove_volumes)
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
+    
+    def get_volumes(self, service_name):
+        volumes = []
+        with open(self.get_local_yml_path(), 'r') as file:
+            data = yaml.safe_load(file)
+            services = data.get('services', {})
+            for service, config in services.items():
+                if service == service_name and 'volumes' in config:
+                    for volume in config['volumes']:
+                        volumes.append(volume.split(':')[0])
+        return volumes
+    
+    
+    # #
+    # def get_volumes(self, service_name):
+    #     volumes = []
+    #     if service_name in self.config['services'] and 'volumes' in self.config['services'][service_name]:
+    #         for volume in self.config['services'][service_name]['volumes']:
+    #             volumes.append(volume.split(':')[0])
+    #     return volumes
 
+    
     def down_service_remote(self, name, remove_volumes=True):
         print(f"Removing {name} service ...")
         # Remove the service containers
         command = (f"cd {os.path.dirname(self.get_remote_yml_path())} && "
-                   f"sudo docker-compose -f {self.get_remote_yml_path()} down --remove-orphans {name}")
+                f"sudo docker-compose -f {self.get_remote_yml_path()} down --remove-orphans {name}")
         self.execute_ssh_command(command)
         
         if remove_volumes:
             # Remove the volumes associated with the service
             print(f"Removing volumes associated with {name} service...")
-            command = (f"sudo docker volume prune --filter label=com.docker.compose.project={name}")
-            subprocess.run(command)
+            volumes = self.get_volumes(name)
+            for volume in volumes:
+                command = (f"sudo docker volume prune --filter label=com.docker.compose.project={volume}")
+                subprocess.run(command)
 
         if name is not None and not self.wait_for_container_removed(name):
             print(f"{name} services may not have been completely removed.")
@@ -431,11 +454,14 @@ class Container:
         if remove_volumes:
             # Remove the volumes associated with the service
             print(f"Removing volumes associated with {name} service...")
-            command = (f"sudo docker volume prune --filter label=com.docker.compose.project={name}")
-            subprocess.run(command)
+            volumes = self.get_volumes(name)
+            for volume in volumes:
+                command = (f"sudo docker volume prune --filter label=com.docker.compose.project={volume}")
+                subprocess.run(command)
 
         if not self.wait_for_container_removed(name):
             print(f"Local {name} services may not have been completely removed.")
+
 
     def down_all_services(self, remove_volumes=True):
         if self.location_type == 'remote':
@@ -482,11 +508,11 @@ if __name__ == "__main__":
     #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
     # db_local_single.up_services()
 
-    # # 创建远程实例并启动单个服务
-    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
-    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-    #                                   location_type='remote')
-    # db_remote_single.up_services()
+    # 创建远程实例并启动单个服务
+    db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+                                      remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+                                      location_type='remote')
+    db_remote_single.up_services()
 
     # # 创建本地实例并启动批量服务
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
@@ -498,7 +524,7 @@ if __name__ == "__main__":
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
     #                             location_type='remote')
     # db_remote_batch.up_services()
-
+# 
     # # 创建不指定服务名称的本地实例以启动所有服务
     # db_local_all = Container(local_path=local_path, remote_path=remote_path)
     # db_local_all.up_services()
@@ -545,11 +571,11 @@ if __name__ == "__main__":
     #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
     # db_local_single.down_services()
 
-    # 创建远程实例并移除单个服务(而且移除相关数据卷)
-    db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
-                                      remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                      location_type='remote')
-    db_remote_single.down_services()
+    # # 创建远程实例并移除单个服务(而且移除相关数据卷)
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.down_services()
 
     # #创建本地实例并移除批量服务(而且移除相关数据卷)
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,

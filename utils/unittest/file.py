@@ -176,8 +176,8 @@ if __name__ == "__main__":
     file_transfer = FileTransfer(remote_host, remote_user, remote_password)
 
     # 上传文件或文件夹
-    local_item = '/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker'  # 可以是文件或文件夹
-    remote_item = '/home/zym/container'  # 远程位置
+    local_item = '/home/WUYING_13701819268_15611880/Desktop/docker-compose.yml'  # 可以是文件或文件夹
+    remote_item = '/home/zym/container/web_meiduo_mall_docker/backend'  # 远程位置
     file_transfer.upload(local_item, remote_item)
     
 #    # 下载文件或文件夹
