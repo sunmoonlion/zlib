@@ -3,6 +3,7 @@ import os
 import stat
 from concurrent.futures import ThreadPoolExecutor
 
+
 class SSHSingleton:
     _instance = None
 
@@ -33,7 +34,8 @@ class SSHSingleton:
             self._ssh.close()
             self._ssh = None
 
-class FileTransfer: 
+
+class FileTransfer:
     def __init__(self, remote_host, remote_user, remote_password):
         self.remote_host = remote_host
         self.remote_user = remote_user
@@ -43,16 +45,6 @@ class FileTransfer:
     def _establish_ssh_connection(self):
         self.ssh_singleton.connect(self.remote_host, self.remote_user, self.remote_password)
 
-    def _normalize_path(self, path, is_directory):
-        normalized_path = os.path.normpath(path)
-        if is_directory:
-            if not normalized_path.endswith('/'):
-                normalized_path += '/'
-        else:
-            if normalized_path.endswith('/'):
-                normalized_path = normalized_path[:-1]
-        return normalized_path
-
     def create_remote_directory(self, remote_path):
         self._establish_ssh_connection()
         ssh = self.ssh_singleton.get_ssh()
@@ -61,7 +53,7 @@ class FileTransfer:
             raise RuntimeError(f"Failed to create remote directory {remote_path}")
 
     def _get_directory_structure(self, dir_path):
-        dirs = [] 
+        dirs = []
         for root, _, _ in os.walk(dir_path):
             dirs.append(os.path.relpath(root, dir_path))
         return dirs
@@ -72,7 +64,7 @@ class FileTransfer:
         for dir in local_dirs:
             remote_dir = os.path.join(remote_path, dir)
             self.create_remote_directory(remote_dir)
-            
+
     def _upload_file(self, local_file_path, remote_file_path):
         self._establish_ssh_connection()
         ssh = self.ssh_singleton.get_ssh()
@@ -101,27 +93,19 @@ class FileTransfer:
             return stat.S_ISDIR(sftp.stat(remote_path).st_mode)
         except IOError:
             return False
-        
+
     def upload(self, local_path, remote_path):
         try:
             if os.path.isdir(local_path):
-                local_path = self._normalize_path(local_path,is_directory=True)
-                remote_path = self._normalize_path(remote_path,is_directory=True)
-                
-                local_dirs = self._get_directory_structure(local_path)
-                remote_folder = os.path.join(remote_path,os.path.basename(local_path[:-1]))
-                
+                local_dirs = self._get_directory_structure(local_path)  # 获取目录结构
+                remote_folder = os.path.join(remote_path, os.path.basename(local_path.rstrip('/')))
                 self._create_remote_directory_structure(local_dirs, remote_folder)
                 self._upload_directory(local_path, remote_folder)
             else:
-                local_path = self._normalize_path(local_path,is_directory=False)
-                remote_path = self._normalize_path(remote_path,is_directory=False)
-                
+                remote_file_path = os.path.join(remote_path, os.path.basename(local_path))
                 self.create_remote_directory(remote_path)
-                remote_path = os.path.join(remote_path, os.path.basename(local_path))
-                self._upload_file(local_path, remote_path)
-                
-            print("上传成功。")  
+                self._upload_file(local_path, remote_file_path)
+            print("上传成功。")
         except RuntimeError as e:
             print(f"上传失败：{str(e)}")
             raise e
@@ -134,10 +118,11 @@ class FileTransfer:
             ssh = self.ssh_singleton.get_ssh()
             sftp = ssh.open_sftp()
 
+            # 确保本地目录存在
+            os.makedirs(local_path, exist_ok=True)
+
             try:
                 if self._is_remote_directory(sftp, remote_path):
-                    local_path = self._normalize_path(local_path, is_directory=True)
-                    remote_path = self._normalize_path(remote_path, is_directory=True)
                     self._download_directory(sftp, remote_path, local_path)
                 else:
                     self._download_file(sftp, remote_path, local_path)
@@ -156,14 +141,13 @@ class FileTransfer:
         sftp.get(remote_path, local_path)
 
     def _download_directory(self, sftp, remote_path, local_dir):
+        os.makedirs(local_dir, exist_ok=True)  # 创建本地目录
         files_and_directories = sftp.listdir_attr(remote_path)
         for item in files_and_directories:
             item_name = item.filename
             remote_item_path = os.path.join(remote_path, item_name)
             local_item_path = os.path.join(local_dir, item_name)
             if stat.S_ISDIR(item.st_mode):
-                os.makedirs(local_item_path, exist_ok=True)
                 self._download_directory(sftp, remote_item_path, local_item_path)
             else:
                 self._download_file(sftp, remote_item_path, local_dir)
-        
