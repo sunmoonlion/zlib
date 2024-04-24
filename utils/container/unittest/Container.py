@@ -485,6 +485,75 @@ class Container:
                 print("container is still running.")
         print("service is not ready after {} attempts.".format(self.max_attempts))
         return False
+    
+    def backup_service_data_volumes(self, target_directory):
+        # 备份指定的服务或所有服务
+        if self.service_name is None:
+            self.backup_all_service_data_volumes(target_directory)
+        elif isinstance(self.service_name, str):
+            self.backup_service_data_volume(self.service_name, target_directory)
+        elif isinstance(self.service_name, list):
+            if self.service_name:
+                for name in self.service_name:
+                    self.backup_service_data_volume(name, target_directory)
+            else:
+                self.backup_all_service_data_volumes(target_directory)
+        else:
+            raise ValueError("Invalid service_name type. Must be a string or a list of strings or None.")
+
+    def backup_service_data_volume(self, name, target_directory):
+        if self.location_type == 'remote':
+            self.backup_service_data_volume_remote(name, target_directory)
+        elif self.location_type == 'local':
+            self.backup_service_data_volume_local(name, target_directory)
+        else:
+            raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
+
+        
+    def backup_service_data_volume_remote(self, name, target_directory):
+        print(f"Backing up {name} service data volumes on remote host...")
+        volumes = self.get_volumes(name)
+        for volume in volumes:
+            backup_script = f"""
+                #!/bin/bash
+                docker run --rm -v {volume}:/volume_data -v {target_directory}:/backup/{name} busybox cp -r /volume_data /backup/{name}
+            """
+            command = f"echo '{backup_script}' > /tmp/service_backup.sh && chmod +x /tmp/service_backup.sh && /tmp/service_backup.sh"
+            self.execute_ssh_command(command)
+
+    def backup_service_data_volume_local(self, name, target_directory):
+        print(f"Backing up {name} service data volumes locally...")
+        volumes = self.get_volumes(name)
+        for volume in volumes:
+            backup_script = f"""
+                #!/bin/bash
+                docker run --rm -v {volume}:/volume_data -v {target_directory}:/backup/{name} busybox cp -r /volume_data /backup/{name}
+            """
+            with open("/tmp/service_backup.sh", "w") as f:
+                f.write(backup_script)
+            subprocess.run(["bash", "/tmp/service_backup.sh"])
+            os.remove("/tmp/service_backup.sh")
+
+
+    def backup_all_service_data_volumes(self, target_directory):
+        # 备份所有数据卷
+        if self.location_type == 'remote':
+            yml_path = self.get_remote_yml_path()
+        elif self.location_type == 'local':
+            yml_path = self.get_local_yml_path()
+        else:
+            raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
+
+        directory_name = os.path.basename(os.path.dirname(yml_path))
+        for service_name in self.config['services']:
+            if 'volumes' in self.config['services'][service_name]:
+                volumes = self.get_volumes(service_name)
+                for volume in volumes:
+                    if self.location_type == 'remote':
+                        self.backup_service_data_volume_remote(volume, target_directory, directory_name, service_name)
+                    elif self.location_type == 'local':
+                        self.backup_service_data_volume_local(volume, target_directory, directory_name, service_name)
+
 
 
 if __name__ == "__main__":
@@ -495,12 +564,13 @@ if __name__ == "__main__":
     local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
     remote_path = "/home/zym/container"
 
-    # 定义DAN个服务名称
+    # 定义单个服务名称
     service_name_single = "db_master"
 
     # 定义多个服务名称
     service_names_batch = ["db_slave", "tracker", "storage"]
-
+    
+    
     # # 创建本地实例并启动单个服务
     # db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
     #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
@@ -570,10 +640,10 @@ if __name__ == "__main__":
     # db_local_single.down_services(remove_volumes=True)
 
     # 创建远程实例并移除单个服务(而且移除相关数据卷)
-    db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
-                                      remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                      location_type='remote')
-    db_remote_single.down_services(remove_volumes=True)
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.down_services(remove_volumes=True)
 
     # #创建本地实例并移除批量服务(而且移除相关数据卷)
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
@@ -625,4 +695,17 @@ if __name__ == "__main__":
     # db_remote_all = Container(local_path=local_path, remote_path=remote_path,remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
     #                                   location_type='remote')
     # db_remote_all.down_services()
+    
+    
+    # # 指定本地备份目录
+    # backup_directory = '/path/to/backup/directory'
+    
+    # # 创建远程实例并备份单个服务
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.backup_service_data_volumes(backup_directory)    
+    
+    
+    
     

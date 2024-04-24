@@ -247,26 +247,26 @@ class Container:
         self.execute_ssh_command(command)
 
         if name is not None and not self.wait_for_container_ready(name):
-            print(f"Failed to start {name} database: Database is not ready.")
+            print(f"Failed to start {name} service: service is not ready.")
             return
 
     def up_service_local(self, name):
-        print(f"Starting local {name} database...")
+        print(f"Starting local {name} service...")
         subprocess.run(["sudo", "docker-compose", "-f", self.get_local_yml_path(), "up", "-d", name],
                        cwd=os.path.dirname(self.get_local_yml_path()))
 
         if name is not None and not self.wait_for_container_ready(name):
-            print(f"Failed to start local {name} database: Database is not ready.")
+            print(f"Failed to start local {name} service: service is not ready.")
             return
 
     def up_all_services(self):
         # 启动所有服务
         if self.location_type == 'remote':
-            print("Starting all databases on remote host...")
+            print("Starting all services on remote host...")
             command = f"cd {self.remote_path} && sudo docker-compose -f {os.path.basename(self.get_local_yml_path())} up -d"
             self.execute_ssh_command(command)
         elif self.location_type == 'local':
-           print("Starting all local databases...")
+           print("Starting all local vervices...")
            subprocess.run(["sudo", "docker-compose", "-f", self.get_local_yml_path(), "up", "-d"],
                        cwd=os.path.dirname(self.get_local_yml_path()))
     
@@ -274,16 +274,16 @@ class Container:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
     def wait_for_container_ready(self, name):
-        print("Waiting for container to be ready...")
+        print("Waiting for service to be ready...")
         for attempt in range(1, self.max_attempts + 1):
             print(f"Attempt {attempt}/{self.max_attempts}")
             time.sleep(self.sleep_time)
             if self.check_status(name, 'up'):
-                print("Database is ready.")
+                print("service is ready.")
                 return True
             else:
-                print("Database is not ready.")
-        print("Database is not ready after {} attempts.".format(self.max_attempts))
+                print("container is not ready.")
+        print("service is not ready after {} attempts.".format(self.max_attempts))
         return False
 
     def check_status(self, name, action):
@@ -347,15 +347,15 @@ class Container:
         self.execute_ssh_command(command)
 
         if name is not None and not self.wait_for_container_stopped(name):
-            print(f"Failed to stop {name} database.")
+            print(f"Failed to stop {name} service.")
 
     def stop_service_local(self, name):
-        print(f"Stopping local {name} database...")
+        print(f"Stopping local {name} service...")
         subprocess.run(["sudo", "docker-compose", "-f", self.get_local_yml_path(), "stop", name],
                        cwd=os.path.dirname(self.get_local_yml_path()))
 
         if name is not None and not self.wait_for_container_stopped(name):
-            print(f"Failed to stop local {name} database.")
+            print(f"Failed to stop local {name} service.")
 
     def stop_all_services(self):
         # 停止所有服务
@@ -371,19 +371,19 @@ class Container:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
     def wait_for_container_stopped(self, name):
-        print("Waiting for container to be stopped...")
+        print("Waiting for service to be stopped...")
         for attempt in range(1, self.max_attempts + 1):
             print(f"Attempt {attempt}/{self.max_attempts}")
             time.sleep(self.sleep_time)
             if not self.check_status(name,'stopped'):
-                print("container is stopped.")
+                print("service is stopped.")
                 return True
             else:
-                print("container is still running.")
+                print("service is still running.")
         print("Database is still running after {} attempts.".format(self.max_attempts))
         return False
 
-    def down_services(self, remove_volumes=True):
+    def down_services(self, remove_volumes=False):
         # 移除指定的服务或所有服务
         if self.service_name is None:
             self.down_all_services(remove_volumes=remove_volumes)
@@ -398,16 +398,25 @@ class Container:
         else:
             raise ValueError("Invalid service_name type. Must be a string or a list of strings or None.")
 
-    def down_service(self, name, remove_volumes=True):
+    def down_service(self, name, remove_volumes=False):
         if self.location_type == 'remote':
-            self.down_service_remote(name, remove_volumes=remove_volumes)
+            self.down_service_remote(name, remove_volumes)
         elif self.location_type == 'local':
-            self.down_service_local(name, remove_volumes=remove_volumes)
+            self.down_service_local(name, remove_volumes)
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
-    def down_service_remote(self, name, remove_volumes=True):
-        print(f"Removing {name} service containers...")
+    def get_volumes(self, service_name):
+        volumes = []
+        yml_path = self.get_local_yml_path()
+        directory_name = os.path.basename(os.path.dirname(yml_path))
+        if service_name in self.config['services'] and 'volumes' in self.config['services'][service_name]:
+            for volume in self.config['services'][service_name]['volumes']:
+                volumes.append(f"{directory_name}_{volume.split(':')[0]}")
+        return volumes
+
+    def down_service_remote(self, name, remove_volumes=False):
+        print(f"Removing {name} service ...")
         # Remove the service containers
         command = (f"cd {os.path.dirname(self.get_remote_yml_path())} && "
                    f"sudo docker-compose -f {self.get_remote_yml_path()} down --remove-orphans {name}")
@@ -416,49 +425,131 @@ class Container:
         if remove_volumes:
             # Remove the volumes associated with the service
             print(f"Removing volumes associated with {name} service...")
-            command = (f"sudo docker volume prune --filter label=com.docker.compose.project={name}")
-            subprocess.run(command)
+            volumes = self.get_volumes(name)
+            for volume in volumes:
+                command = (f"cd {os.path.dirname(self.get_remote_yml_path())} && "f"sudo docker volume rm {volume}")
+                self.execute_ssh_command(command)
 
         if name is not None and not self.wait_for_container_removed(name):
-            print(f"{name} service containers may not have been completely removed.")
+            print(f"{name} services may not have been completely removed.")
 
-    def down_service_local(self, name, remove_volumes=True):
-        print(f"Removing local {name} database containers...")
+    def down_service_local(self, name, remove_volumes=False):
+        print(f"Removing local {name}  services...")
         # Remove the service containers
         command = ["sudo", "docker-compose", "-f", self.get_local_yml_path(), "down", "--remove-orphans", name]
         self.execute_ssh_command(command)
         
         if remove_volumes:
             # Remove the volumes associated with the service
-            print(f"Removing volumes associated with {name} service...")
-            command = (f"sudo docker volume prune --filter label=com.docker.compose.project={name}")
-            subprocess.run(command)
+            print(f"Removing all volumes associated with {name} service...")
+            volumes = self.get_volumes(name)
+            for volume in volumes:
+                command = (f"sudo docker volume  rm {volume}")
+                subprocess.run(command)
 
         if not self.wait_for_container_removed(name):
-            print(f"Local {name} database containers may not have been completely removed.")
+            print(f"Local {name} services may not have been completely removed.")
 
-    def down_all_services(self, remove_volumes=True):
+
+    def down_all_services(self, remove_volumes=False):
         if self.location_type == 'remote':
-            print("Removing all databases on remote host...")
+            print("Removing all services on remote host...")
             command = f"cd {self.remote_path} && sudo docker-compose -f {os.path.basename(self.get_remote_yml_path())} down --remove-orphans"
             self.execute_ssh_command(command)
+            if remove_volumes:
+                # Remove all volumes 
+                print(f"Removing all volumes ...")
+                command = "sudo docker volume prune --force"
+                self.execute_ssh_command(command)
         elif self.location_type == 'local':
-            print("Removing all local databases...")
+            print("Removing all local containers...")
             command = ["sudo", "docker-compose", "-f", self.get_local_yml_path(), "down", "--remove-orphans"]
             self.execute_ssh_command(command)
+            if remove_volumes:
+                # Remove all volumes 
+                print(f"Removing all volumes ...")
+                command = "sudo docker volume prune --force"
+                subprocess.run(command, shell=True)
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
     def wait_for_container_removed(self, name):
-        print("Waiting for container to be removed...")
+        print("Waiting for service to be removed...")
         for attempt in range(1, self.max_attempts + 1):
             print(f"Attempt {attempt}/{self.max_attempts}")
             time.sleep(self.sleep_time)
             if not self.check_status(name, 'removed'):
-                print("container is removed.")
+                print("service is removed.")
                 return True
             else:
                 print("container is still running.")
-        print("Database is not ready after {} attempts.".format(self.max_attempts))
+        print("service is not ready after {} attempts.".format(self.max_attempts))
         return False
+    
+    def backup_service_data_volumes(self, target_directory):
+        # 备份指定的服务或所有服务
+        if self.service_name is None:
+            self.backup_all_service_data_volumes(target_directory)
+        elif isinstance(self.service_name, str):
+            self.backup_service_data_volume(self.service_name, target_directory)
+        elif isinstance(self.service_name, list):
+            if self.service_name:
+                for name in self.service_name:
+                    self.backup_service_data_volume(name, target_directory)
+            else:
+                self.backup_all_service_data_volumes(target_directory)
+        else:
+            raise ValueError("Invalid service_name type. Must be a string or a list of strings or None.")
 
+    def backup_service_data_volume(self, name, target_directory):
+        if self.location_type == 'remote':
+            self.backup_service_data_volume_remote(name, target_directory)
+        elif self.location_type == 'local':
+            self.backup_service_data_volume_local(name, target_directory)
+        else:
+            raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
+
+        
+    def backup_service_data_volume_remote(self, name, target_directory):
+        print(f"Backing up {name} service data volumes on remote host...")
+        volumes = self.get_volumes(name)
+        for volume in volumes:
+            backup_script = f"""
+                #!/bin/bash
+                docker run --rm -v {volume}:/volume_data -v {target_directory}:/backup/{name} busybox cp -r /volume_data /backup/{name}
+            """
+            command = f"echo '{backup_script}' > /tmp/service_backup.sh && chmod +x /tmp/service_backup.sh && /tmp/service_backup.sh"
+            self.execute_ssh_command(command)
+
+    def backup_service_data_volume_local(self, name, target_directory):
+        print(f"Backing up {name} service data volumes locally...")
+        volumes = self.get_volumes(name)
+        for volume in volumes:
+            backup_script = f"""
+                #!/bin/bash
+                docker run --rm -v {volume}:/volume_data -v {target_directory}:/backup/{name} busybox cp -r /volume_data /backup/{name}
+            """
+            with open("/tmp/service_backup.sh", "w") as f:
+                f.write(backup_script)
+            subprocess.run(["bash", "/tmp/service_backup.sh"])
+            os.remove("/tmp/service_backup.sh")
+
+
+    def backup_all_service_data_volumes(self, target_directory):
+        # 备份所有数据卷
+        if self.location_type == 'remote':
+            yml_path = self.get_remote_yml_path()
+        elif self.location_type == 'local':
+            yml_path = self.get_local_yml_path()
+        else:
+            raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
+
+        directory_name = os.path.basename(os.path.dirname(yml_path))
+        for service_name in self.config['services']:
+            if 'volumes' in self.config['services'][service_name]:
+                volumes = self.get_volumes(service_name)
+                for volume in volumes:
+                    if self.location_type == 'remote':
+                        self.backup_service_data_volume_remote(volume, target_directory, directory_name, service_name)
+                    elif self.location_type == 'local':
+                        self.backup_service_data_volume_local(volume, target_directory, directory_name, service_name)
