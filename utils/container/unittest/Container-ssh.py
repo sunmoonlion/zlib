@@ -579,6 +579,7 @@ attention:
 3、本程序中需要执行docker命令，所以，一定保证执行paramiko的相关命令时要CD到docker-compose.yml文件所在的目录，否则，docker-compose命令无法执行。
 其次，本程序定义了需查找docker-compose.yml文件所在的目录的方法，但是，有可能找到多个yml文件，这样，要保证。只能找到一个yml文件，否则，会出错。当然，也不能没有yml文件。
 所以，可以保证上传的文件夹中的只有一个yml文件名
+4.低版本的parakimo不能正常运行，版本3.4经测试可以正常运行
 """
 
 if __name__ == "__main__":
