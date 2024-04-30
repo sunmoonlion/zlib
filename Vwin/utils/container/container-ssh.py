@@ -15,19 +15,30 @@ class SSHSingleton:
             cls._instance._ssh = None
         return cls._instance
 
-    def connect(self, host, username, password):
+    def connect(self, host, username, password=None, private_key_path=None):
+        if password is None and private_key_path is None:
+            raise ValueError("Either password or private_key_path must be provided.")
+        
         if self._ssh is None or not self._ssh.get_transport().is_active():
             try:
                 self._ssh = paramiko.SSHClient()
                 self._ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                self._ssh.connect(host, username=username, password=password)
+                print(f"Trying to connect to {host}...")
+                if private_key_path:
+                    private_key = paramiko.RSAKey.from_private_key_file(private_key_path)
+                    self._ssh.connect(host, username=username, pkey=private_key)                    
+                else:
+                    self._ssh.connect(host, username=username, password=password)
+                print(f"Connected to {host}.")
             except paramiko.AuthenticationException as e:
                 print(f"Failed to authenticate with host {host}: {str(e)}")
                 raise
             except paramiko.SSHException as e:
                 print(f"SSH connection to host {host} failed: {str(e)}")
                 raise
-
+            except Exception as e:
+                print(f"An unexpected error occurred: {str(e)}")
+                raise
     def get_ssh(self):
         return self._ssh
 
@@ -37,14 +48,15 @@ class SSHSingleton:
             self._ssh = None
 
 class FileTransfer: 
-    def __init__(self, remote_host, remote_user, remote_password):
+    def __init__(self, remote_host, remote_user, remote_password=None, private_key_path=None):
         self.remote_host = remote_host
         self.remote_user = remote_user
         self.remote_password = remote_password
+        self.private_key_path = private_key_path
         self.ssh_singleton = SSHSingleton()
 
     def _establish_ssh_connection(self):
-        self.ssh_singleton.connect(self.remote_host, self.remote_user, self.remote_password)
+        self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
 
     def _normalize_path(self, path, is_directory):
         normalized_path = os.path.normpath(path)
@@ -173,7 +185,7 @@ class FileTransfer:
 
 class Container:
     def __init__(self, local_path, remote_path, service_name=None, remote_host=None, remote_user=None, remote_password=None,
-                 location_type='local', max_attempts=10, sleep_time=5):
+                 location_type='local', max_attempts=10, sleep_time=5, private_key_path=None):
         self.local_path = local_path
         self.remote_path = remote_path
         self.service_name = service_name
@@ -183,14 +195,16 @@ class Container:
         self.location_type = location_type
         self.max_attempts = max_attempts
         self.sleep_time = sleep_time
+        self.private_key_path = private_key_path
         self.load_config()
         self.ssh_singleton = SSHSingleton()
 
+
     def _establish_ssh_connection(self):
-        self.ssh_singleton.connect(self.remote_host, self.remote_user, self.remote_password)
+        self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
 
     def load_file(self):
-        load_file = FileTransfer(self.remote_host, self.remote_user, self.remote_password)
+        load_file = FileTransfer(self.remote_host, self.remote_user, self.remote_password, self.private_key_path)
         load_file.upload(self.local_path, self.remote_path)
         
     def get_local_yml_path(self):
@@ -202,15 +216,16 @@ class Container:
        
   
     def get_remote_yml_path(self):
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(self.remote_host, username=self.remote_user, password=self.remote_password)
+        # ssh = paramiko.SSHClient()
+        # ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        # ssh.connect(self.remote_host, username=self.remote_user, password=self.remote_password)
         
         command = f"find {self.remote_path} -type f -name docker-compose.yml"
-        stdin, stdout, stderr = ssh.exec_command(command)
-        remote_yml_path = stdout.read().strip().decode('utf-8')
+        stdout, stderr = self.execute_ssh_command(command)
+        remote_yml_path = stdout.strip()
+        print(remote_yml_path)
+        print('wo')
         
-        ssh.close()
         return remote_yml_path
 
     
@@ -285,7 +300,7 @@ class Container:
                 print("container is not ready.")
         print("service is not ready after {} attempts.".format(self.max_attempts))
         return False
-
+    
     def check_status(self, name, action):
         if action == 'up':
             command = ["sudo", "docker", "ps", "-a", "--filter", f"name={name}", "--format", "{{.Names}}"]
@@ -553,3 +568,181 @@ class Container:
                         self.backup_service_data_volume_remote(volume, target_directory, directory_name, service_name)
                     elif self.location_type == 'local':
                         self.backup_service_data_volume_local(volume, target_directory, directory_name, service_name)
+
+"""
+attention:
+1、当程序调试时，如果出现问题，可以手动执行命令，查看具体错误信息，比如，有次因为我sudoers文件配置错误，导致无法执行sudo命令，所以程序执行失败。
+但是，程序中并没有显示这个错误信息，所以，可以手动执行命令，查看具体错误信息。
+2、在执行命令时，本程序中的命令是通过paramiko模块执行的，所以，如果执行的命令中有sudo命令，需要注意，paramiko执行的命令是没有sudo权限的，
+所以，如果执行的命令中有sudo命令，需要在命令前加sudo，或者在命令前加sudo -S，然后在命令后加上密码，这样就可以执行sudo命令了。
+不过，最好在sudoers文件中配置免密码执行sudo命令。
+3、本程序中需要执行docker命令，所以，一定保证执行paramiko的相关命令时要CD到docker-compose.yml文件所在的目录，否则，docker-compose命令无法执行。
+其次，本程序定义了需查找docker-compose.yml文件所在的目录的方法，但是，有可能找到多个yml文件，这样，要保证。只能找到一个yml文件，否则，会出错。当然，也不能没有yml文件。
+所以，可以保证上传的文件夹中的只有一个yml文件名
+4.低版本的parakimo不能正常运行，版本3.4经测试可以正常运行
+"""
+
+if __name__ == "__main__":
+    remote_host = "47.100.19.119"
+    remote_user = "zym"
+    
+    #定义本地主机的私钥路径
+    private_key_path = "/home/WUYING_13701819268_15611880/.ssh/new_key"
+    # # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
+    # remote_password = "alyfwqok"
+    
+    local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
+    remote_path = "/home/zym/"
+
+    # 定义单个服务名称
+    service_name_single = "db_master"
+
+    #定义多个服务名称
+    service_names_batch = ["db_master","db_slave"]
+    
+    
+    
+    # # 创建本地实例并启动单个服务
+    # db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_local_single.up_services()
+
+    # # 创建远程实例并启动单个服务
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.up_services()
+
+    # # 创建本地实例并启动批量服务
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_remote_batch.up_services()
+
+    # # 创建远程实例并启动批量服务
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                             location_type='remote')
+    # db_remote_batch.up_services()
+    
+    #创建远程实例并启动批量服务 用ssh密钥连接
+    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+                                remote_host=remote_host, remote_user=remote_user,location_type='remote',
+                                private_key_path=private_key_path)      
+    db_remote_batch.up_services()
+# 
+    # # 创建不指定服务名称的本地实例以启动所有服务
+    # db_local_all = Container(local_path=local_path, remote_path=remote_path)
+    # db_local_all.up_services()
+
+    # # 创建不指定服务名称的远程实例以启动所有服务
+    # db_remote_all = Container(local_path=local_path, remote_path=remote_path,remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_all.up_services()
+
+    # # 创建本地实例并停止单个服务
+    # db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_local_single.stop_services()
+
+    # # 创建远程实例并停止单个服务
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.stop_services()
+
+    # # 创建本地实例并停止批量服务
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_remote_batch.stop_services()
+
+    # # 创建远程实例并停止批量服务
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                             location_type='remote')
+    # db_remote_batch.stop_services()
+
+    # # 创建不指定服务名称的本地实例以停止所有服务
+    # db_local_all = Container(local_path=local_path, remote_path=remote_path)
+    # db_local_all.stop_services()
+
+    # # 创建不指定服务名称的远程实例以停止所有服务
+    # db_remote_all = Container(local_path=local_path, remote_path=remote_path,remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_all.stop_services()
+    
+    
+    # # 创建本地实例并移除单个服务(而且移除相关数据卷)
+    # db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_local_single.down_services(remove_volumes=True)
+
+    # 创建远程实例并移除单个服务(而且移除相关数据卷)
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.down_services(remove_volumes=True)
+
+    # #创建本地实例并移除批量服务(而且移除相关数据卷)
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_remote_batch.down_services(remove_volumes=True)
+
+    # # #创建远程实例并移除批量服务(而且移除相关数据卷)
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                             location_type='remote')
+    # db_remote_batch.down_services(remove_volumes=True)
+
+    # # 创建不指定服务名称的本地实例以移除所有服务(而且移除相关数据卷)
+    # db_local_all = Container(local_path=local_path, remote_path=remote_path)
+    # db_local_all.down_services(remove_volumes=True)
+
+    # # 创建不指定服务名称的远程实例以移除所有服务(而且移除相关数据卷)
+    # db_remote_all = Container(local_path=local_path, remote_path=remote_path,remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_all.down_services(remove_volumes=True)
+    
+    # # 创建本地实例并移除单个服务(但不移除相关数据卷)
+    # db_local_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_local_single.down_services()
+
+    # # 创建远程实例并移除单个服务(但不移除相关数据卷)
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.down_services()
+
+    # # 创建本地实例并移除批量服务(但不移除相关数据卷)
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_remote_batch.down_services()
+
+    # #创建远程实例并移除批量服务(但不移除相关数据卷)
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                             location_type='remote')
+    # db_remote_batch.down_services()
+
+    # # 创建不指定服务名称的本地实例以移除所有服务(但不移除相关数据卷)
+    # db_local_all = Container(local_path=local_path, remote_path=remote_path)
+    # db_local_all.down_services()
+
+    # # 创建不指定服务名称的远程实例以移除所有服务(但不移除相关数据卷)
+    # db_remote_all = Container(local_path=local_path, remote_path=remote_path,remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_all.down_services()
+    
+    
+    # # 指定本地备份目录
+    # backup_directory = '/path/to/backup/directory'
+    
+    # # 创建远程实例并备份单个服务
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                                   location_type='remote')
+    # db_remote_single.backup_service_data_volumes(backup_directory)    
+    
+    
+    
+    

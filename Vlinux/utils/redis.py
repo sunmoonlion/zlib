@@ -24,9 +24,9 @@ class RedisDatabase:
         连接到 Redis 服务器。
         """
         try:
-            self.connection = redis.StrictRedis(host=self.host, port=self.port, password=self.password, db=self.db)
+            self.connection = RedisDatabase.StrictRedis(host=self.host, port=self.port, password=self.password, db=self.db)
             print(f"连接成功，当前操作的数据库为 {self.db}")
-        except redis.ConnectionError as e:
+        except RedisDatabase.ConnectionError as e:
             print(f"连接失败: {e}")
 
     def insert_data(self, key, data, method="push"):
@@ -51,7 +51,7 @@ class RedisDatabase:
                 print("不支持的插入方式")
                 return
             print("数据插入成功！")
-        except redis.RedisError as e:
+        except RedisDatabase.RedisError as e:
             print(f"插入数据时出错: {e}")
 
     def get_data(self, key):
@@ -66,7 +66,7 @@ class RedisDatabase:
         """
         try:
             return self.connection.lrange(key, 0, -1)
-        except redis.RedisError as e:
+        except RedisDatabase.RedisError as e:
             print(f"查询数据时出错: {e}")
             return []
 
