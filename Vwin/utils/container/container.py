@@ -15,19 +15,30 @@ class SSHSingleton:
             cls._instance._ssh = None
         return cls._instance
 
-    def connect(self, host, username, password):
+    def connect(self, host, username, password=None, private_key_path=None):
+        if password is None and private_key_path is None:
+            raise ValueError("Either password or private_key_path must be provided.")
+        
         if self._ssh is None or not self._ssh.get_transport().is_active():
             try:
                 self._ssh = paramiko.SSHClient()
                 self._ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                self._ssh.connect(host, username=username, password=password)
+                print(f"Trying to connect to {host}...")
+                if private_key_path:
+                    private_key = paramiko.RSAKey.from_private_key_file(private_key_path)
+                    self._ssh.connect(host, username=username, pkey=private_key)                    
+                else:
+                    self._ssh.connect(host, username=username, password=password)
+                print(f"Connected to {host}.")
             except paramiko.AuthenticationException as e:
                 print(f"Failed to authenticate with host {host}: {str(e)}")
                 raise
             except paramiko.SSHException as e:
                 print(f"SSH connection to host {host} failed: {str(e)}")
                 raise
-
+            except Exception as e:
+                print(f"An unexpected error occurred: {str(e)}")
+                raise
     def get_ssh(self):
         return self._ssh
 
@@ -36,25 +47,17 @@ class SSHSingleton:
             self._ssh.close()
             self._ssh = None
 
+
 class FileTransfer: 
-    def __init__(self, remote_host, remote_user, remote_password):
+    def __init__(self, remote_host, remote_user, remote_password=None, private_key_path=None):
         self.remote_host = remote_host
         self.remote_user = remote_user
         self.remote_password = remote_password
+        self.private_key_path = private_key_path
         self.ssh_singleton = SSHSingleton()
 
     def _establish_ssh_connection(self):
-        self.ssh_singleton.connect(self.remote_host, self.remote_user, self.remote_password)
-
-    def _normalize_path(self, path, is_directory):
-        normalized_path = os.path.normpath(path)
-        if is_directory:
-            if not normalized_path.endswith('/'):
-                normalized_path += '/'
-        else:
-            if normalized_path.endswith('/'):
-                normalized_path = normalized_path[:-1]
-        return normalized_path
+        self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
 
     def create_remote_directory(self, remote_path):
         self._establish_ssh_connection()
@@ -64,18 +67,20 @@ class FileTransfer:
             raise RuntimeError(f"Failed to create remote directory {remote_path}")
 
     def _get_directory_structure(self, dir_path):
-        dirs = [] 
+        dirs = []
         for root, _, _ in os.walk(dir_path):
-            dirs.append(os.path.relpath(root, dir_path))
+            dirs.append(os.path.relpath(root, dir_path).replace('\\','/'))
+        #以上之所以要replace('\\','/')是因为windows下的路径分隔符是'\'，而linux下的路径分隔符是'/'，但下文是在linux下创建目录的，本来它也能处理，但是下午同时在一个
+        # 处理函数中同时传入windows路径和linux路径，这就不统一了，所以要替换成一种类型，这里选择linux的路径分隔符'/'
         return dirs
 
     def _create_remote_directory_structure(self, local_dirs, remote_path):
         self._establish_ssh_connection()
         ssh = self.ssh_singleton.get_ssh()
         for dir in local_dirs:
-            remote_dir = os.path.join(remote_path, dir)
+            remote_dir = remote_path + '/' + dir
             self.create_remote_directory(remote_dir)
-            
+
     def _upload_file(self, local_file_path, remote_file_path):
         self._establish_ssh_connection()
         ssh = self.ssh_singleton.get_ssh()
@@ -94,7 +99,7 @@ class FileTransfer:
                 for root, dirs, files in os.walk(local_path):
                     for file in files:
                         local_file_path = os.path.join(root, file)
-                        remote_file_path = os.path.join(remote_path, os.path.relpath(local_file_path, local_path))
+                        remote_file_path = remote_path + '/' + os.path.relpath(local_file_path, local_path).replace('\\','/')
                         executor.submit(self._upload_file, local_file_path, remote_file_path)
         finally:
             sftp.close()
@@ -104,27 +109,19 @@ class FileTransfer:
             return stat.S_ISDIR(sftp.stat(remote_path).st_mode)
         except IOError:
             return False
-        
+
     def upload(self, local_path, remote_path):
         try:
             if os.path.isdir(local_path):
-                local_path = self._normalize_path(local_path,is_directory=True)
-                remote_path = self._normalize_path(remote_path,is_directory=True)
-                
-                local_dirs = self._get_directory_structure(local_path)
-                remote_folder = os.path.join(remote_path,os.path.basename(local_path[:-1]))
-                
+                local_dirs = self._get_directory_structure(local_path)  # 获取目录结构
+                remote_folder = os.path.join(remote_path, os.path.basename(local_path.rstrip('/')))
                 self._create_remote_directory_structure(local_dirs, remote_folder)
                 self._upload_directory(local_path, remote_folder)
             else:
-                local_path = self._normalize_path(local_path,is_directory=False)
-                remote_path = self._normalize_path(remote_path,is_directory=False)
-                
+                remote_file_path = os.path.join(remote_path, os.path.basename(local_path))
                 self.create_remote_directory(remote_path)
-                remote_path = os.path.join(remote_path, os.path.basename(local_path))
-                self._upload_file(local_path, remote_path)
-                
-            print("上传成功。")  
+                self._upload_file(local_path, remote_file_path)
+            print("上传成功。")
         except RuntimeError as e:
             print(f"上传失败：{str(e)}")
             raise e
@@ -137,10 +134,11 @@ class FileTransfer:
             ssh = self.ssh_singleton.get_ssh()
             sftp = ssh.open_sftp()
 
+            # 确保本地目录存在
+            os.makedirs(local_path, exist_ok=True)
+
             try:
                 if self._is_remote_directory(sftp, remote_path):
-                    local_path = self._normalize_path(local_path, is_directory=True)
-                    remote_path = self._normalize_path(remote_path, is_directory=True)
                     self._download_directory(sftp, remote_path, local_path)
                 else:
                     self._download_file(sftp, remote_path, local_path)
@@ -159,13 +157,13 @@ class FileTransfer:
         sftp.get(remote_path, local_path)
 
     def _download_directory(self, sftp, remote_path, local_dir):
+        os.makedirs(local_dir, exist_ok=True)  # 创建本地目录
         files_and_directories = sftp.listdir_attr(remote_path)
         for item in files_and_directories:
             item_name = item.filename
-            remote_item_path = os.path.join(remote_path, item_name)
+            remote_item_path = remote_path + '/' + item_name
             local_item_path = os.path.join(local_dir, item_name)
             if stat.S_ISDIR(item.st_mode):
-                os.makedirs(local_item_path, exist_ok=True)
                 self._download_directory(sftp, remote_item_path, local_item_path)
             else:
                 self._download_file(sftp, remote_item_path, local_dir)
@@ -173,7 +171,7 @@ class FileTransfer:
 
 class Container:
     def __init__(self, local_path, remote_path, service_name=None, remote_host=None, remote_user=None, remote_password=None,
-                 location_type='local', max_attempts=10, sleep_time=5):
+                 location_type='local', max_attempts=10, sleep_time=5, private_key_path=None):
         self.local_path = local_path
         self.remote_path = remote_path
         self.service_name = service_name
@@ -183,14 +181,16 @@ class Container:
         self.location_type = location_type
         self.max_attempts = max_attempts
         self.sleep_time = sleep_time
+        self.private_key_path = private_key_path
         self.load_config()
         self.ssh_singleton = SSHSingleton()
 
+
     def _establish_ssh_connection(self):
-        self.ssh_singleton.connect(self.remote_host, self.remote_user, self.remote_password)
+        self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
 
     def load_file(self):
-        load_file = FileTransfer(self.remote_host, self.remote_user, self.remote_password)
+        load_file = FileTransfer(self.remote_host, self.remote_user, self.remote_password, self.private_key_path)
         load_file.upload(self.local_path, self.remote_path)
         
     def get_local_yml_path(self):
@@ -202,15 +202,9 @@ class Container:
        
   
     def get_remote_yml_path(self):
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(self.remote_host, username=self.remote_user, password=self.remote_password)
-        
         command = f"find {self.remote_path} -type f -name docker-compose.yml"
-        stdin, stdout, stderr = ssh.exec_command(command)
-        remote_yml_path = stdout.read().strip().decode('utf-8')
-        
-        ssh.close()
+        stdout, stderr = self.execute_ssh_command(command)
+        remote_yml_path = stdout.strip()              
         return remote_yml_path
 
     
@@ -285,7 +279,7 @@ class Container:
                 print("container is not ready.")
         print("service is not ready after {} attempts.".format(self.max_attempts))
         return False
-
+    
     def check_status(self, name, action):
         if action == 'up':
             command = ["sudo", "docker", "ps", "-a", "--filter", f"name={name}", "--format", "{{.Names}}"]
@@ -554,21 +548,37 @@ class Container:
                     elif self.location_type == 'local':
                         self.backup_service_data_volume_local(volume, target_directory, directory_name, service_name)
 
-
+"""
+attention:
+1、当程序调试时，如果出现问题，可以手动执行命令，查看具体错误信息，比如，有次因为我sudoers文件配置错误，导致无法执行sudo命令，所以程序执行失败。
+但是，程序中并没有显示这个错误信息，所以，可以手动执行命令，查看具体错误信息。
+2、在执行命令时，本程序中的命令是通过paramiko模块执行的，所以，如果执行的命令中有sudo命令，需要注意，paramiko执行的命令是没有sudo权限的，
+所以，如果执行的命令中有sudo命令，需要在命令前加sudo，或者在命令前加sudo -S，然后在命令后加上密码，这样就可以执行sudo命令了。
+不过，最好在sudoers文件中配置免密码执行sudo命令。
+3、本程序中需要执行docker命令，所以，一定保证执行paramiko的相关命令时要CD到docker-compose.yml文件所在的目录，否则，docker-compose命令无法执行。
+其次，本程序定义了需查找docker-compose.yml文件所在的目录的方法，但是，有可能找到多个yml文件，这样，要保证。只能找到一个yml文件，否则，会出错。当然，也不能没有yml文件。
+所以，可以保证上传的文件夹中的只有一个yml文件名
+4.低版本的parakimo不能正常运行，版本3.4经测试可以正常运行
+"""
 
 if __name__ == "__main__":
-    remote_host = "47.103.135.26"
+    remote_host = "47.100.19.119"
     remote_user = "zym"
-    remote_password = "alyfwqok"
-
-    local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
-    remote_path = "/home/zym/container"
+    
+    #定义本地主机的私钥路径
+    private_key_path = "C:\\Users\\zym\\.ssh\\new_key"
+    # # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
+    # remote_password = "alyfwqok"
+    
+    local_path = "C:\\Users\\zym\\Desktop\\web_meiduo_mall_docker"
+    remote_path = "/home/zym/container/"
 
     # 定义单个服务名称
     service_name_single = "db_master"
 
-    # 定义多个服务名称
-    service_names_batch = ["db_slave", "tracker", "storage"]
+    #定义多个服务名称
+    service_names_batch = ["db_master","db_slave"]
+    
     
     
     # # 创建本地实例并启动单个服务
@@ -592,6 +602,12 @@ if __name__ == "__main__":
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
     #                             location_type='remote')
     # db_remote_batch.up_services()
+    
+    #创建远程实例并启动批量服务 用ssh密钥连接
+    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+                                remote_host=remote_host, remote_user=remote_user,location_type='remote',
+                                private_key_path=private_key_path)      
+    db_remote_batch.up_services()
 # 
     # # 创建不指定服务名称的本地实例以启动所有服务
     # db_local_all = Container(local_path=local_path, remote_path=remote_path)

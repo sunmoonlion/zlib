@@ -13,19 +13,30 @@ class SSHSingleton:
             cls._instance._ssh = None
         return cls._instance
 
-    def connect(self, host, username, password):
+    def connect(self, host, username, password=None, private_key_path=None):
+        if password is None and private_key_path is None:
+            raise ValueError("Either password or private_key_path must be provided.")
+        
         if self._ssh is None or not self._ssh.get_transport().is_active():
             try:
                 self._ssh = paramiko.SSHClient()
                 self._ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                self._ssh.connect(host, username=username, password=password)
+                print(f"Trying to connect to {host}...")
+                if private_key_path:
+                    private_key = paramiko.RSAKey.from_private_key_file(private_key_path)
+                    self._ssh.connect(host, username=username, pkey=private_key)                    
+                else:
+                    self._ssh.connect(host, username=username, password=password)
+                print(f"Connected to {host}.")
             except paramiko.AuthenticationException as e:
                 print(f"Failed to authenticate with host {host}: {str(e)}")
                 raise
             except paramiko.SSHException as e:
                 print(f"SSH connection to host {host} failed: {str(e)}")
                 raise
-
+            except Exception as e:
+                print(f"An unexpected error occurred: {str(e)}")
+                raise
     def get_ssh(self):
         return self._ssh
 
@@ -35,15 +46,16 @@ class SSHSingleton:
             self._ssh = None
 
 
-class FileTransfer:
-    def __init__(self, remote_host, remote_user, remote_password):
+class FileTransfer: 
+    def __init__(self, remote_host, remote_user, remote_password=None, private_key_path=None):
         self.remote_host = remote_host
         self.remote_user = remote_user
         self.remote_password = remote_password
+        self.private_key_path = private_key_path
         self.ssh_singleton = SSHSingleton()
 
     def _establish_ssh_connection(self):
-        self.ssh_singleton.connect(self.remote_host, self.remote_user, self.remote_password)
+        self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
 
     def create_remote_directory(self, remote_path):
         self._establish_ssh_connection()
@@ -56,6 +68,8 @@ class FileTransfer:
         dirs = []
         for root, _, _ in os.walk(dir_path):
             dirs.append(os.path.relpath(root, dir_path).replace('\\','/'))
+        #以上之所以要replace('\\','/')是因为windows下的路径分隔符是'\'，而linux下的路径分隔符是'/'，但下文是在linux下创建目录的，本来它也能处理，但是下午同时在一个
+        # 处理函数中同时传入windows路径和linux路径，这就不统一了，所以要替换成一种类型，这里选择linux的路径分隔符'/'
         return dirs
 
     def _create_remote_directory_structure(self, local_dirs, remote_path):
@@ -151,3 +165,38 @@ class FileTransfer:
                 self._download_directory(sftp, remote_item_path, local_item_path)
             else:
                 self._download_file(sftp, remote_item_path, local_dir)
+                
+                
+if __name__ == "__main__":
+    remote_host = "47.100.19.119"
+    remote_user = "zym"
+    
+    #定义本地主机的私钥路径
+    private_key_path = "C:\\Users\\zym\\.ssh\\new_key"
+    # # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
+    # remote_password = "alyfwqok"
+    
+    # file_transfer = FileTransfer(remote_host, remote_user, private_key_path=private_key_path)
+    
+    file_transfer = FileTransfer(remote_host, remote_user, remote_password)
+
+    # 文件夹
+    local_path = "C:\\Users\\zym\\Desktop\\web_meiduo_mall_docker"
+    remote_path = "/home/zym/container/"
+    file_transfer.upload(local_path, remote_path)
+
+    # # 上传文件
+    # local_path = 'C:\\Users\\zym\\Desktop\\web_meiduo_mall_docker\\docker-compose.yml'  # 可以是文件或文件夹
+    # remote_path = '/home/zym/container/'  # 远程位置
+    # file_transfer.upload(local_path, remote_path)
+
+    # # 下载文件夹
+    # local_path = 'C:\\Users\\zym\\Desktop\\Desktop' 
+    # remote_path = '/home/zym/container/web_meiduo_mall_docker/backend'  # 远程位置
+    # file_transfer.download(remote_path, local_path)
+
+    # # 下载文件
+    # local_path = 'C:\\Users\\zym\\Desktop\\Desktop' 
+    # remote_path = '/home/zym/container/web_meiudo_mall_docker/backend/docker-compose.yml'  # 远程位置
+    # file_transfer.download(remote_path, local_path)
+
