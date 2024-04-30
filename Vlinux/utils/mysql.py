@@ -68,14 +68,28 @@ class MySQLDatabase:
 
     def connect(self):
         try:
-            self.connection = pymysql.connect(host=self.host, user=self.username, password=self.password)
+            if self.private_key_path:
+                # 如果提供了 private_key_path，则使用密钥连接
+                ssh = SSHClient()
+                ssh.set_missing_host_key_policy(AutoAddPolicy())
+                private_key = RSAKey.from_private_key_file(self.private_key_path)
+                ssh.connect(hostname=self.host, username=self.username, pkey=private_key)
+                self.connection = pymysql.connect(host=self.host, user=self.username, password=self.password,
+                                                   port=self.port, unix_socket='/var/run/mysqld/mysqld.sock',
+                                                   cursorclass=pymysql.cursors.DictCursor)
+            else:
+                # 否则，使用密码连接
+                self.connection = pymysql.connect(host=self.host, user=self.username, password=self.password,
+                                                   port=self.port, unix_socket='/var/run/mysqld/mysqld.sock',
+                                                   cursorclass=pymysql.cursors.DictCursor)
+
             self.cursor = self.connection.cursor()
             self.engine = create_engine(f'mysql+pymysql://{self.username}:{self.password}@{self.host}:{self.port}')
             self.cursor.execute("USE information_schema")  # Select a specific database after connection
         except pymysql.Error as e:
             logging.error(f"Error occurred while connecting to the database: {e}")
             raise
-
+    
     def create_database(self, database_name, charset='utf8mb4', collation='utf8mb4_unicode_ci'):
         try:
             self.cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name} CHARACTER SET {charset} COLLATE {collation}")
