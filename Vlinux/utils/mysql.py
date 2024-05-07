@@ -1,11 +1,17 @@
 import pymysql
 import pandas as pd
 import paramiko
-import logging
 import subprocess
-from sqlalchemy import create_engine
+import logging
+import os
 
-logging.basicConfig(filename='app.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# 获取当前文件所在的目录
+current_directory = os.path.dirname(os.path.realpath(__file__))
+# 将日志文件路径设置为当前文件所在目录下的 app.log
+log_file_path = os.path.join(current_directory, 'app.log')
+
+# 配置日志
+logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class SSHSingleton:
@@ -54,7 +60,7 @@ class SSHSingleton:
 
 
 class MySQLDatabase:
-    def __init__(self, username, password, host='localhost', port='3306', private_key_path=None, location_type='local'):
+    def __init__(self, username, password, host='127.0.0.1', port='3306', private_key_path=None, location_type='local'):
         self.username = username
         self.password = password
         self.host = host
@@ -63,33 +69,18 @@ class MySQLDatabase:
         self.location_type = location_type
         self.connection = None
         self.cursor = None
-        self.ssh_singleton = SSHSingleton()
         self.engine = None
+        self.ssh_singleton = SSHSingleton()
 
-    def connect(self):
         try:
-            if self.private_key_path:
-                # 如果提供了 private_key_path，则使用密钥连接
-                ssh = SSHClient()
-                ssh.set_missing_host_key_policy(AutoAddPolicy())
-                private_key = RSAKey.from_private_key_file(self.private_key_path)
-                ssh.connect(hostname=self.host, username=self.username, pkey=private_key)
-                self.connection = pymysql.connect(host=self.host, user=self.username, password=self.password,
-                                                   port=self.port, unix_socket='/var/run/mysqld/mysqld.sock',
-                                                   cursorclass=pymysql.cursors.DictCursor)
-            else:
-                # 否则，使用密码连接
-                self.connection = pymysql.connect(host=self.host, user=self.username, password=self.password,
-                                                   port=self.port, unix_socket='/var/run/mysqld/mysqld.sock',
-                                                   cursorclass=pymysql.cursors.DictCursor)
-
+            self.connection = pymysql.connect(host=self.host, user=self.username, password=self.password,
+                                              port=self.port, cursorclass=pymysql.cursors.DictCursor)
             self.cursor = self.connection.cursor()
-            self.engine = create_engine(f'mysql+pymysql://{self.username}:{self.password}@{self.host}:{self.port}')
-            self.cursor.execute("USE information_schema")  # Select a specific database after connection
+            self.engine = self.connection  # 使用连接对象作为数据库引擎, 用于pandas的to_sql方法
         except pymysql.Error as e:
             logging.error(f"Error occurred while connecting to the database: {e}")
             raise
-    
+
     def create_database(self, database_name, charset='utf8mb4', collation='utf8mb4_unicode_ci'):
         try:
             self.cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name} CHARACTER SET {charset} COLLATE {collation}")
@@ -215,7 +206,15 @@ class MySQLDatabase:
             logging.error(f"Error occurred while exporting the database: {e}")
             raise
 
+    def establish_ssh_connection(self):
+        try:
+            self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
+        except Exception as e:
+            logging.error(f"Error occurred while establishing SSH connection: {e}")
+            raise
+
     def import_table_remote(self, database_name, table_name, sql_file_path):
+        self.establish_ssh_connection()  # 建立SSH连接
         try:
             ssh = self.ssh_singleton.get_ssh()
             command = f"mysql -u {self.username} -p{self.password} {database_name} < {sql_file_path}"
@@ -227,6 +226,7 @@ class MySQLDatabase:
             raise
 
     def export_table_remote(self, database_name, table_name, sql_file_path):
+        self.establish_ssh_connection()  # 建立SSH连接
         try:
             ssh = self.ssh_singleton.get_ssh()
             command = f"mysqldump -u {self.username} -p{self.password} {database_name} {table_name} > {sql_file_path}"
@@ -293,46 +293,31 @@ class MySQLDatabase:
             logging.error(f"Error occurred while importing data: {e}")
             return None
 
-
-    def export_dataframe_to_table(self, dataframe, database_name, table_name=None, query=None):
+    def export_dataframe_to_table(self, dataframe, database_name, table_name=None):
         try:
             self.cursor.execute(f"USE {database_name}")
-            if query:
-                logging.warning("Both table name and query provided. Ignoring the table name and using the provided query.")
-                final_query = query
-            elif table_name:
-                final_query = f"SELECT * FROM {table_name}"
+            if table_name:
+                dataframe.to_sql(table_name, con=self.connection, if_exists='replace', index=False)
+                logging.info(f"DataFrame data exported to table '{table_name}' successfully.")
             else:
-                logging.error("Either table name or query must be provided.")
-                return None
-
-            dataframe.to_sql(table_name, self.engine, if_exists='replace', index=False)
-            logging.info(f"DataFrame data exported to table '{table_name}' successfully.")
+                logging.error("Table name must be provided.")
         except pymysql.Error as e:
             logging.error(f"Error occurred while exporting DataFrame to table: {e}")
             raise
 
 
-
 if __name__ == "__main__":
-    db = MySQLDatabase(username="zym", password="alyfwqok", host="47.103.135.26", port=3306, private_key_path=None, location_type='remote')
-
-    try:
-        db.connect()
-        db.create_database("example_database", charset='utf8', collation='utf8_unicode_ci')
+    db = MySQLDatabase(host="47.100.19.119",username="zym", password="123456", port=3306, location_type='remote')  
+    try:       
+        db.create_database("example_database", charset='utf8', collation='utf8_unicode_ci')      
         fields = ["id INT AUTO_INCREMENT PRIMARY KEY", "name VARCHAR(255)", "age INT"]
         db.create_table(database_name="example_database", table_name="example_table", fields=fields)
-
         data = [(None, 'Alice', 30), (None, 'Bob', 25)]
         columns = ['id', 'name', 'age']
         db.insert_data(database_name="example_database", table_name="example_table", data=data, columns=columns)
-
-        db.select_data(database_name="example_database", table_name="example_table")
-
+        db.select_data(database_name="example_database", table_name="example_table")  
         df = db.import_table_to_dataframe(database_name="example_database", table_name="example_table")
-
         db.export_dataframe_to_table(dataframe=df, database_name="example_database", table_name="new_table")
-
         db.delete_table(database_name="example_database", table_name="example_table")
         db.delete_database("example_database")
 
@@ -341,3 +326,4 @@ if __name__ == "__main__":
 
     finally:
         db.close_connection()
+
