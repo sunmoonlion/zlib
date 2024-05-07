@@ -60,6 +60,9 @@ class SSHSingleton:
 
 
 class MySQLDatabase:
+    # 初始化数据库连接, 默认连接本地数据库, 可以通过host参数指定远程数据库
+    # location_type参数用于指定数据库文件的位置, 可选值为'local'和'remote'
+    # 如果location_type为'remote', 则需要提供private_key_path参数
     def __init__(self, username, password, host='127.0.0.1', port='3306', private_key_path=None, location_type='local'):
         self.username = username
         self.password = password
@@ -115,7 +118,9 @@ class MySQLDatabase:
         except pymysql.Error as e:
             logging.error(f"Error occurred while deleting the table: {e}")
             raise
-
+    #下面的方法的sql_file_path参数是指数据库文件的路径, 用于导入和导出数据库
+    #特别注意: 如果是本地数据库, 则sql_file_path是本地文件的路径，
+    #如果是远程数据库, 则sql_file_path是远程服务器上的文件路径，下面的其他方法也是一样！！！！
     def import_database(self, database_name, sql_file_path):
         if self.location_type == 'local':
             self.import_database_local(database_name, sql_file_path)
@@ -307,7 +312,7 @@ class MySQLDatabase:
 
 
 if __name__ == "__main__":
-    db = MySQLDatabase(host="47.100.19.119",username="zym", password="123456", port=3306, location_type='remote')  
+    db = MySQLDatabase(host="47.100.19.119",username="root", password="123456", port=3306, location_type='remote')  
     try:       
         db.create_database("example_database", charset='utf8', collation='utf8_unicode_ci')      
         fields = ["id INT AUTO_INCREMENT PRIMARY KEY", "name VARCHAR(255)", "age INT"]
