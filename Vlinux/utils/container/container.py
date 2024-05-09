@@ -5,7 +5,16 @@ import paramiko
 import os
 import stat
 from concurrent.futures import ThreadPoolExecutor
-from utils.file import SSHSingleton,FileTransfer
+
+import sys
+# 获取当前脚本所在的目录
+script_dir = os.path.dirname(os.path.abspath(__file__))
+# 获取上级目录
+parent_dir = os.path.dirname(script_dir)
+# 添加上级目录到系统路径中
+sys.path.append(parent_dir)
+
+from file import SSHSingleton, FileTransfer
 
 
 class Container:
