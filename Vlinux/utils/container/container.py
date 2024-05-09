@@ -5,183 +5,8 @@ import paramiko
 import os
 import stat
 from concurrent.futures import ThreadPoolExecutor
+from utils.file import SSHSingleton,FileTransfer
 
-class SSHSingleton:
-    _instance = None
-
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._ssh = None
-        return cls._instance
-
-    def connect(self, host, username, password=None, private_key_path=None):
-        if password is None and private_key_path is None:
-            raise ValueError("Either password or private_key_path must be provided.")
-        
-        if self._ssh is None or not self._ssh.get_transport().is_active():
-            try:
-                self._ssh = paramiko.SSHClient()
-                self._ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                print(f"Trying to connect to {host}...")
-                if private_key_path:
-                    private_key = paramiko.RSAKey.from_private_key_file(private_key_path)
-                    self._ssh.connect(host, username=username, pkey=private_key)                    
-                else:
-                    self._ssh.connect(host, username=username, password=password)
-                print(f"Connected to {host}.")
-            except paramiko.AuthenticationException as e:
-                print(f"Failed to authenticate with host {host}: {str(e)}")
-                raise
-            except paramiko.SSHException as e:
-                print(f"SSH connection to host {host} failed: {str(e)}")
-                raise
-            except Exception as e:
-                print(f"An unexpected error occurred: {str(e)}")
-                raise
-    def get_ssh(self):
-        return self._ssh
-
-    def close(self):
-        if self._ssh is not None:
-            self._ssh.close()
-            self._ssh = None
-
-class FileTransfer: 
-    def __init__(self, remote_host, remote_user, remote_password=None, private_key_path=None):
-        self.remote_host = remote_host
-        self.remote_user = remote_user
-        self.remote_password = remote_password
-        self.private_key_path = private_key_path
-        self.ssh_singleton = SSHSingleton()
-
-    def _establish_ssh_connection(self):
-        self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
-
-    def _normalize_path(self, path, is_directory):
-        normalized_path = os.path.normpath(path)
-        if is_directory:
-            if not normalized_path.endswith('/'):
-                normalized_path += '/'
-        else:
-            if normalized_path.endswith('/'):
-                normalized_path = normalized_path[:-1]
-        return normalized_path
-
-    def create_remote_directory(self, remote_path):
-        self._establish_ssh_connection()
-        ssh = self.ssh_singleton.get_ssh()
-        stdin, stdout, stderr = ssh.exec_command(f"mkdir -p {remote_path}")
-        if stderr.read().strip():
-            raise RuntimeError(f"Failed to create remote directory {remote_path}")
-
-    def _get_directory_structure(self, dir_path):
-        dirs = [] 
-        for root, _, _ in os.walk(dir_path):
-            dirs.append(os.path.relpath(root, dir_path))
-        return dirs
-
-    def _create_remote_directory_structure(self, local_dirs, remote_path):
-        self._establish_ssh_connection()
-        ssh = self.ssh_singleton.get_ssh()
-        for dir in local_dirs:
-            remote_dir = os.path.join(remote_path, dir)
-            self.create_remote_directory(remote_dir)
-            
-    def _upload_file(self, local_file_path, remote_file_path):
-        self._establish_ssh_connection()
-        ssh = self.ssh_singleton.get_ssh()
-        sftp = ssh.open_sftp()
-        try:
-            sftp.put(local_file_path, remote_file_path)
-        finally:
-            sftp.close()
-
-    def _upload_directory(self, local_path, remote_path):
-        self._establish_ssh_connection()
-        ssh = self.ssh_singleton.get_ssh()
-        sftp = ssh.open_sftp()
-        try:
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                for root, dirs, files in os.walk(local_path):
-                    for file in files:
-                        local_file_path = os.path.join(root, file)
-                        remote_file_path = os.path.join(remote_path, os.path.relpath(local_file_path, local_path))
-                        executor.submit(self._upload_file, local_file_path, remote_file_path)
-        finally:
-            sftp.close()
-
-    def _is_remote_directory(self, sftp, remote_path):
-        try:
-            return stat.S_ISDIR(sftp.stat(remote_path).st_mode)
-        except IOError:
-            return False
-        
-    def upload(self, local_path, remote_path):
-        try:
-            if os.path.isdir(local_path):
-                local_path = self._normalize_path(local_path,is_directory=True)
-                remote_path = self._normalize_path(remote_path,is_directory=True)
-                
-                local_dirs = self._get_directory_structure(local_path)
-                remote_folder = os.path.join(remote_path,os.path.basename(local_path[:-1]))
-                
-                self._create_remote_directory_structure(local_dirs, remote_folder)
-                self._upload_directory(local_path, remote_folder)
-            else:
-                local_path = self._normalize_path(local_path,is_directory=False)
-                remote_path = self._normalize_path(remote_path,is_directory=False)
-                
-                self.create_remote_directory(remote_path)
-                remote_path = os.path.join(remote_path, os.path.basename(local_path))
-                self._upload_file(local_path, remote_path)
-                
-            print("上传成功。")  
-        except RuntimeError as e:
-            print(f"上传失败：{str(e)}")
-            raise e
-        finally:
-            self.ssh_singleton.close()
-
-    def download(self, remote_path, local_path):
-        try:
-            self._establish_ssh_connection()
-            ssh = self.ssh_singleton.get_ssh()
-            sftp = ssh.open_sftp()
-
-            try:
-                if self._is_remote_directory(sftp, remote_path):
-                    local_path = self._normalize_path(local_path, is_directory=True)
-                    remote_path = self._normalize_path(remote_path, is_directory=True)
-                    self._download_directory(sftp, remote_path, local_path)
-                else:
-                    self._download_file(sftp, remote_path, local_path)
-                print("下载成功。")
-            finally:
-                sftp.close()
-        except RuntimeError as e:
-            print(f"下载失败：{str(e)}")
-            raise e
-        finally:
-            self.ssh_singleton.close()
-
-    def _download_file(self, sftp, remote_path, local_dir):
-        remote_filename = os.path.basename(remote_path)
-        local_path = os.path.join(local_dir, remote_filename)
-        sftp.get(remote_path, local_path)
-
-    def _download_directory(self, sftp, remote_path, local_dir):
-        files_and_directories = sftp.listdir_attr(remote_path)
-        for item in files_and_directories:
-            item_name = item.filename
-            remote_item_path = os.path.join(remote_path, item_name)
-            local_item_path = os.path.join(local_dir, item_name)
-            if stat.S_ISDIR(item.st_mode):
-                os.makedirs(local_item_path, exist_ok=True)
-                self._download_directory(sftp, remote_item_path, local_item_path)
-            else:
-                self._download_file(sftp, remote_item_path, local_dir)
-        
 
 class Container:
     def __init__(self, local_path, remote_path, service_name=None, remote_host=None, remote_user=None, remote_password=None,
@@ -198,6 +23,8 @@ class Container:
         self.private_key_path = private_key_path
         self.load_config()
         self.ssh_singleton = SSHSingleton()
+        self.local_yml_path = self.get_local_yml_path()
+        self.remote_yml_path = self.get_remote_yml_path()
 
 
     def _establish_ssh_connection(self):
@@ -207,6 +34,7 @@ class Container:
         load_file = FileTransfer(self.remote_host, self.remote_user, self.remote_password, self.private_key_path)
         load_file.upload(self.local_path, self.remote_path)
         
+    # local_path目录里可能不仅有yaml文件，还有其他文件，所以要找到yaml文件
     def get_local_yml_path(self):
         for root, dirs, files in os.walk(self.local_path):
             for file in files:
@@ -219,6 +47,19 @@ class Container:
         command = f"find {self.remote_path} -type f -name docker-compose.yml"
         stdout, stderr = self.execute_ssh_command(command)
         remote_yml_path = stdout.strip()
+    
+        # 如果远程路径中没有找到yml文件，那么上传文件
+        if not remote_yml_path:
+            self.load_file()
+    
+            # 再次尝试获取远程路径中的yml文件
+            stdout, stderr = self.execute_ssh_command(command)
+            remote_yml_path = stdout.strip()
+    
+            # 如果还是没有找到yml文件，那么抛出异常
+            if not remote_yml_path:
+                raise Exception("Failed to find yml file in remote path after uploading.")
+    
         return remote_yml_path
 
     
@@ -251,7 +92,7 @@ class Container:
 
     def up_service_remote(self, name):
         print(f"Starting {name} service...")
-        command = f"cd {os.path.dirname(self.get_remote_yml_path())} && sudo docker-compose -f {self.get_remote_yml_path()} up -d {name}"
+        command = f"cd {os.path.dirname(self.remote_yml_path)} && sudo docker-compose -f {self.remote_yml_path} up -d {name}"
         self.execute_ssh_command(command)
 
         if name is not None and not self.wait_for_container_ready(name):
@@ -260,8 +101,8 @@ class Container:
 
     def up_service_local(self, name):
         print(f"Starting local {name} service...")
-        subprocess.run(["sudo", "docker-compose", "-f", self.get_local_yml_path(), "up", "-d", name],
-                       cwd=os.path.dirname(self.get_local_yml_path()))
+        subprocess.run(["sudo", "docker-compose", "-f", self.local_yml_path, "up", "-d", name],
+                       cwd=os.path.dirname(self.local_yml_path))
 
         if name is not None and not self.wait_for_container_ready(name):
             print(f"Failed to start local {name} service: service is not ready.")
@@ -271,12 +112,12 @@ class Container:
         # 启动所有服务
         if self.location_type == 'remote':
             print("Starting all services on remote host...")
-            command = f"cd {self.remote_path} && sudo docker-compose -f {os.path.basename(self.get_local_yml_path())} up -d"
+            command = f"cd {self.remote_path} && sudo docker-compose -f {os.path.basename(self.local_yml_path)} up -d"
             self.execute_ssh_command(command)
         elif self.location_type == 'local':
            print("Starting all local vervices...")
-           subprocess.run(["sudo", "docker-compose", "-f", self.get_local_yml_path(), "up", "-d"],
-                       cwd=os.path.dirname(self.get_local_yml_path()))
+           subprocess.run(["sudo", "docker-compose", "-f", self.local_yml_path, "up", "-d"],
+                       cwd=os.path.dirname(self.local_yml_path))
     
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
@@ -351,7 +192,7 @@ class Container:
 
     def stop_service_remote(self, name):
         print(f"Stopping {name} service...")
-        command = f"cd {os.path.dirname(self.get_remote_yml_path())} && sudo docker-compose -f {self.get_remote_yml_path()} stop {name}"
+        command = f"cd {os.path.dirname(self.remote_yml_path)} && sudo docker-compose -f {self.remote_yml_path} stop {name}"
         self.execute_ssh_command(command)
 
         if name is not None and not self.wait_for_container_stopped(name):
@@ -359,8 +200,8 @@ class Container:
 
     def stop_service_local(self, name):
         print(f"Stopping local {name} service...")
-        subprocess.run(["sudo", "docker-compose", "-f", self.get_local_yml_path(), "stop", name],
-                       cwd=os.path.dirname(self.get_local_yml_path()))
+        subprocess.run(["sudo", "docker-compose", "-f", self.local_yml_path, "stop", name],
+                       cwd=os.path.dirname(self.local_yml_path))
 
         if name is not None and not self.wait_for_container_stopped(name):
             print(f"Failed to stop local {name} service.")
@@ -369,12 +210,12 @@ class Container:
         # 停止所有服务
         if self.location_type == 'remote':
             print("Stopping all service on remote host...")
-            command = f"cd {self.remote_path} && sudo docker-compose -f {os.path.basename(self.get_local_yml_path())} stop"
+            command = f"cd {self.remote_path} && sudo docker-compose -f {os.path.basename(self.local_yml_path)} stop"
             self.execute_ssh_command(command)
         elif self.location_type == 'local':
             print("Stopping all local service...")
-            subprocess.run(["sudo", "docker-compose", "-f", self.get_local_yml_path(), "stop"],
-                           cwd=os.path.dirname(self.get_local_yml_path()))
+            subprocess.run(["sudo", "docker-compose", "-f", self.local_yml_path, "stop"],
+                           cwd=os.path.dirname(self.local_yml_path))
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
@@ -416,7 +257,7 @@ class Container:
 
     def get_volumes(self, service_name):
         volumes = []
-        yml_path = self.get_local_yml_path()
+        yml_path = self.local_yml_path
         directory_name = os.path.basename(os.path.dirname(yml_path))
         if service_name in self.config['services'] and 'volumes' in self.config['services'][service_name]:
             for volume in self.config['services'][service_name]['volumes']:
@@ -426,8 +267,8 @@ class Container:
     def down_service_remote(self, name, remove_volumes=False):
         print(f"Removing {name} service ...")
         # Remove the service containers
-        command = (f"cd {os.path.dirname(self.get_remote_yml_path())} && "
-                   f"sudo docker-compose -f {self.get_remote_yml_path()} down --remove-orphans {name}")
+        command = (f"cd {os.path.dirname(self.remote_yml_path)} && "
+                   f"sudo docker-compose -f {self.remote_yml_path} down --remove-orphans {name}")
         self.execute_ssh_command(command)
         
         if remove_volumes:
@@ -435,7 +276,7 @@ class Container:
             print(f"Removing volumes associated with {name} service...")
             volumes = self.get_volumes(name)
             for volume in volumes:
-                command = (f"cd {os.path.dirname(self.get_remote_yml_path())} && "f"sudo docker volume rm {volume}")
+                command = (f"cd {os.path.dirname(self.remote_yml_path)} && "f"sudo docker volume rm {volume}")
                 self.execute_ssh_command(command)
 
         if name is not None and not self.wait_for_container_removed(name):
@@ -444,7 +285,7 @@ class Container:
     def down_service_local(self, name, remove_volumes=False):
         print(f"Removing local {name}  services...")
         # Remove the service containers
-        command = ["sudo", "docker-compose", "-f", self.get_local_yml_path(), "down", "--remove-orphans", name]
+        command = ["sudo", "docker-compose", "-f", self.local_yml_path, "down", "--remove-orphans", name]
         self.execute_ssh_command(command)
         
         if remove_volumes:
@@ -462,7 +303,7 @@ class Container:
     def down_all_services(self, remove_volumes=False):
         if self.location_type == 'remote':
             print("Removing all services on remote host...")
-            command = f"cd {self.remote_path} && sudo docker-compose -f {os.path.basename(self.get_remote_yml_path())} down --remove-orphans"
+            command = f"cd {self.remote_path} && sudo docker-compose -f {os.path.basename(self.remote_yml_path)} down --remove-orphans"
             self.execute_ssh_command(command)
             if remove_volumes:
                 # Remove all volumes 
@@ -471,7 +312,7 @@ class Container:
                 self.execute_ssh_command(command)
         elif self.location_type == 'local':
             print("Removing all local containers...")
-            command = ["sudo", "docker-compose", "-f", self.get_local_yml_path(), "down", "--remove-orphans"]
+            command = ["sudo", "docker-compose", "-f", self.local_yml_path, "down", "--remove-orphans"]
             self.execute_ssh_command(command)
             if remove_volumes:
                 # Remove all volumes 
@@ -546,9 +387,9 @@ class Container:
     def backup_all_service_data_volumes(self, target_directory):
         # 备份所有数据卷
         if self.location_type == 'remote':
-            yml_path = self.get_remote_yml_path()
+            yml_path = self.remote_yml_path
         elif self.location_type == 'local':
-            yml_path = self.get_local_yml_path()
+            yml_path = self.local_yml_path
         else:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
 
@@ -585,7 +426,7 @@ if __name__ == "__main__":
     remote_password = "alyfwqok"
     
     local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
-    remote_path = "/home/zym/"
+    remote_path = "/home/zym/container"
 
     # 定义单个服务名称
     service_name_single = "db_master"
