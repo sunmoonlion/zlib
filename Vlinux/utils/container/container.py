@@ -41,6 +41,7 @@ class Container:
 
     def load_file(self):
         load_file = FileTransfer(self.remote_host, self.remote_user, self.remote_password, self.private_key_path)
+        print(f"Starting loading...")
         load_file.upload(self.local_path, self.remote_path)
         
     # local_path目录里可能不仅有yaml文件，还有其他文件，所以要找到yaml文件
@@ -426,13 +427,14 @@ attention:
 """
 
 if __name__ == "__main__":
-    remote_host = "47.100.19.119"
+    remote_host = "47.103.135.26"
     remote_user = "zym"
     
-    # #定义本地主机的私钥路径
-    # private_key_path = "/home/WUYING_13701819268_15611880/.ssh/new_key"
-    # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
-    remote_password = "alyfwqok"
+    #定义本地主机的私钥路径
+    private_key_path = "/home/WUYING_13701819268_15611880/.ssh/new_key"
+    
+    # # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
+    # remote_password = "alyfwqok"
     
     local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
     remote_path = "/home/zym/container"
@@ -461,11 +463,11 @@ if __name__ == "__main__":
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
     # db_remote_batch.up_services()
 
-    # 创建远程实例并启动批量服务
-    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
-                                remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
-                                location_type='remote')
-    db_remote_batch.up_services()
+    # # 创建远程实例并启动批量服务
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                             location_type='remote')
+    # db_remote_batch.up_services()
     
     # #创建远程实例并启动批量服务 用ssh密钥连接
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
@@ -498,6 +500,12 @@ if __name__ == "__main__":
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
     # db_remote_batch.stop_services()
 
+    # # 创建远程实例并停止批量服务 用ssh密钥连接
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path,
+    #                             location_type='remote')
+    # db_remote_batch.stop_services()
+    
     # # 创建远程实例并停止批量服务
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
@@ -530,6 +538,17 @@ if __name__ == "__main__":
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
     # db_remote_batch.down_services(remove_volumes=True)
 
+    # #创建本地实例并移除批量服务(而且移除相关数据卷) 用ssh密钥连接
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
+    # db_remote_batch.down_services(remove_volumes=True)
+    
+    # #创建远程实例并移除批量服务(而且移除相关数据卷) 用ssh密钥连接
+    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+                                remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path,
+                                location_type='remote')
+    db_remote_batch.down_services(remove_volumes=True)
+    
     # # #创建远程实例并移除批量服务(而且移除相关数据卷)
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,

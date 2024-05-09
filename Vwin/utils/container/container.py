@@ -39,6 +39,7 @@ class Container:
 
     def load_file(self):
         load_file = FileTransfer(self.remote_host, self.remote_user, self.remote_password, self.private_key_path)
+        print(f"Starting loading...")
         load_file.upload(self.local_path, self.remote_path)
         
     def get_local_yml_path(self):
