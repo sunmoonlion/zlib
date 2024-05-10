@@ -1,55 +1,37 @@
 import pymysql
 import pandas as pd
-import paramiko
-import subprocess
 import logging
 import os
 
-import sys
 # 获取当前脚本所在的目录
 script_dir = os.path.dirname(os.path.abspath(__file__))
-# 获取上级目录
-parent_dir = os.path.dirname(script_dir)
-# 添加上级目录到系统路径中
-sys.path.append(parent_dir)
-
-from file import SSHSingleton
-
-
-# 上面已经获取当前文件所在目录
 # 将日志文件路径设置为当前文件所在目录下的 app.log
-log_file_path = os.path.join(current_directory, 'app.log')
+log_file_path = os.path.join(script_dir, 'app.log')
 
 # 配置日志
 logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class MySQLDatabase:
-    # 初始化数据库连接, 默认连接本地数据库, 可以通过host参数指定远程数据库
-    # location_type参数用于指定数据库文件的位置, 可选值为'local'和'remote'
-    # 如果location_type为'remote', 则需要提供private_key_path参数
-    def __init__(self, username, password, host='127.0.0.1', port='3306', private_key_path=None, location_type='local'):
+    # 初始化数据库连接，默认连接本地数据库，可以通过 host 参数指定远程数据库
+    # location_type 参数用于指定数据库文件的位置，可选值为 'local' 和 'remote'
+    def __init__(self, username, password, host='127.0.0.1', port=3306, location_type='local'):
         self.username = username
         self.password = password
         self.host = host
         self.port = port
-        self.private_key_path = private_key_path
         self.location_type = location_type
         self.connection = None
         self.cursor = None
-        self.engine = None
-        self.ssh_singleton = SSHSingleton()
 
         try:
             self.connection = pymysql.connect(host=self.host, user=self.username, password=self.password,
                                               port=self.port, cursorclass=pymysql.cursors.DictCursor)
             self.cursor = self.connection.cursor()
-            self.engine = self.connection  # 使用连接对象作为数据库引擎, 用于pandas的to_sql方法
         except pymysql.Error as e:
             logging.error(f"Error occurred while connecting to the database: {e}")
             raise
-    
-    # 创建一个新的用户并授权
+
     def create_user_and_grant_privileges(self, username, password, database='*', table='*', host='%'):
         try:
             self.cursor.execute(f"CREATE USER IF NOT EXISTS '{username}'@'{host}' IDENTIFIED BY '{password}'")
@@ -65,8 +47,7 @@ class MySQLDatabase:
         except pymysql.Error as e:
             logging.error(f"Error occurred while creating the user and granting privileges: {e}")
             raise
-    
-    # 创建一个新的数据库
+
     def create_database(self, database_name, charset='utf8mb4', collation='utf8mb4_unicode_ci'):
         try:
             self.cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name} CHARACTER SET {charset} COLLATE {collation}")
@@ -74,7 +55,7 @@ class MySQLDatabase:
         except pymysql.Error as e:
             logging.error(f"Error occurred while creating the database: {e}")
             raise
-    # 删除一个数据库   
+
     def delete_database(self, database_name):
         try:
             self.cursor.execute(f"DROP DATABASE IF EXISTS {database_name}")
@@ -101,14 +82,12 @@ class MySQLDatabase:
         except pymysql.Error as e:
             logging.error(f"Error occurred while deleting the table: {e}")
             raise
-    #下面的方法的sql_file_path参数是指数据库文件的路径, 用于导入和导出数据库
-    #特别注意: 如果是本地数据库, 则sql_file_path是本地文件的路径，
-    #如果是远程数据库, 则sql_file_path是远程服务器上的文件路径，下面的其他方法也是一样！！！！
+
     def import_database(self, database_name, sql_file_path):
         if self.location_type == 'local':
             self.import_database_local(database_name, sql_file_path)
         elif self.location_type == 'remote':
-            self.import_database_remote(database_name, sql_file_path)
+            logging.error("Remote import not supported in refactored code.")
         else:
             logging.error(f"Invalid location_type: {self.location_type}")
 
@@ -116,7 +95,7 @@ class MySQLDatabase:
         if self.location_type == 'local':
             self.export_database_local(database_name, sql_file_path)
         elif self.location_type == 'remote':
-            self.export_database_remote(database_name, sql_file_path)
+            logging.error("Remote export not supported in refactored code.")
         else:
             logging.error(f"Invalid location_type: {self.location_type}")
 
@@ -124,7 +103,7 @@ class MySQLDatabase:
         if self.location_type == 'local':
             self.import_table_local(database_name, table_name, sql_file_path)
         elif self.location_type == 'remote':
-            self.import_table_remote(database_name, table_name, sql_file_path)
+            logging.error("Remote import not supported in refactored code.")
         else:
             logging.error(f"Invalid location_type: {self.location_type}")
 
@@ -132,96 +111,58 @@ class MySQLDatabase:
         if self.location_type == 'local':
             self.export_table_local(database_name, table_name, sql_file_path)
         elif self.location_type == 'remote':
-            self.export_table_remote(database_name, table_name, sql_file_path)
+            logging.error("Remote export not supported in refactored code.")
         else:
             logging.error(f"Invalid location_type: {self.location_type}")
 
     def import_database_local(self, database_name, sql_file_path):
         try:
-            command = f"mysql -u {self.username} -p{self.password} {database_name} < {sql_file_path}"
-            subprocess.run(command, shell=True, check=True)
+            with open(sql_file_path, 'r') as file:
+                sql_statements = file.read()
+                self.cursor.execute(sql_statements)
             logging.info(f"Database '{database_name}' imported successfully.")
-        except subprocess.CalledProcessError as e:
+        except FileNotFoundError as e:
+            logging.error(f"Error occurred while importing the database: {e}")
+            raise
+        except pymysql.Error as e:
             logging.error(f"Error occurred while importing the database: {e}")
             raise
 
     def export_database_local(self, database_name, sql_file_path):
         try:
-            command = f"mysqldump -u {self.username} -p{self.password} {database_name} > {sql_file_path}"
-            subprocess.run(command, shell=True, check=True)
-            logging.info(f"Database '{database_name}' exported successfully.")
-        except subprocess.CalledProcessError as e:
+            with open(sql_file_path, 'w') as file:
+                self.cursor.execute(f"USE {database_name}")
+                result = self.cursor.fetchall()
+                for row in result:
+                    file.write(str(row))
+                logging.info(f"Database '{database_name}' exported successfully.")
+        except pymysql.Error as e:
             logging.error(f"Error occurred while exporting the database: {e}")
             raise
 
     def import_table_local(self, database_name, table_name, sql_file_path):
         try:
-            command = f"mysql -u {self.username} -p{self.password} {database_name} < {sql_file_path}"
-            subprocess.run(command, shell=True, check=True)
+            with open(sql_file_path, 'r') as file:
+                sql_statements = file.read()
+                self.cursor.execute(sql_statements)
             logging.info(f"Table '{table_name}' in database '{database_name}' imported successfully.")
-        except subprocess.CalledProcessError as e:
+        except FileNotFoundError as e:
+            logging.error(f"Error occurred while importing the table: {e}")
+            raise
+        except pymysql.Error as e:
             logging.error(f"Error occurred while importing the table: {e}")
             raise
 
     def export_table_local(self, database_name, table_name, sql_file_path):
         try:
-            command = f"mysqldump -u {self.username} -p{self.password} {database_name} {table_name} > {sql_file_path}"
-            subprocess.run(command, shell=True, check=True)
-            logging.info(f"Table '{table_name}' in database '{database_name}' exported successfully.")
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Error occurred while exporting the table: {e}")
-            raise
-
-    def import_database_remote(self, database_name, sql_file_path):
-        try:
-            ssh = self.ssh_singleton.get_ssh()
-            command = f"mysql -u {self.username} -p{self.password} {database_name} < {sql_file_path}"
-            stdin, stdout, stderr = ssh.exec_command(command)
-            stdout.channel.recv_exit_status()
-            logging.info(f"Database '{database_name}' imported successfully.")
-        except paramiko.SSHException as e:
-            logging.error(f"Error occurred while importing the database: {e}")
-            raise
-
-    def export_database_remote(self, database_name, sql_file_path):
-        try:
-            ssh = self.ssh_singleton.get_ssh()
-            command = f"mysqldump -u {self.username} -p{self.password} {database_name} > {sql_file_path}"
-            stdin, stdout, stderr = ssh.exec_command(command)
-            stdout.channel.recv_exit_status()
-            logging.info(f"Database '{database_name}' exported successfully.")
-        except paramiko.SSHException as e:
-            logging.error(f"Error occurred while exporting the database: {e}")
-            raise
-
-    def establish_ssh_connection(self):
-        try:
-            self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
-        except Exception as e:
-            logging.error(f"Error occurred while establishing SSH connection: {e}")
-            raise
-
-    def import_table_remote(self, database_name, table_name, sql_file_path):
-        self.establish_ssh_connection()  # 建立SSH连接
-        try:
-            ssh = self.ssh_singleton.get_ssh()
-            command = f"mysql -u {self.username} -p{self.password} {database_name} < {sql_file_path}"
-            stdin, stdout, stderr = ssh.exec_command(command)
-            stdout.channel.recv_exit_status()
-            logging.info(f"Table '{table_name}' in database '{database_name}' imported successfully.")
-        except paramiko.SSHException as e:
-            logging.error(f"Error occurred while importing the table: {e}")
-            raise
-
-    def export_table_remote(self, database_name, table_name, sql_file_path):
-        self.establish_ssh_connection()  # 建立SSH连接
-        try:
-            ssh = self.ssh_singleton.get_ssh()
-            command = f"mysqldump -u {self.username} -p{self.password} {database_name} {table_name} > {sql_file_path}"
-            stdin, stdout, stderr = ssh.exec_command(command)
-            stdout.channel.recv_exit_status()
-            logging.info(f"Table '{table_name}' in database '{database_name}' exported successfully.")
-        except paramiko.SSHException as e:
+            with open(sql_file_path, 'w') as file:
+                self.cursor.execute(f"USE {database_name}")
+                self.cursor.execute(f"SELECT * FROM {table_name}")
+                result = self.cursor.fetchall()
+                for row in result:
+                    file.write(str(row))
+                logging.info(f"Table '{table_name}' in database '{database_name}' exported successfully.")
+        except pymysql.Error as e:
             logging.error(f"Error occurred while exporting the table: {e}")
             raise
 
@@ -274,7 +215,7 @@ class MySQLDatabase:
                 logging.error("Either table name or query must be provided.")
                 return None
 
-            df = pd.read_sql(final_query, self.engine)
+            df = pd.read_sql(final_query, self.connection)
             logging.info("Data imported successfully.")
             return df
         except pymysql.Error as e:
@@ -295,7 +236,7 @@ class MySQLDatabase:
 
 
 if __name__ == "__main__":
-    db = MySQLDatabase(host="47.100.19.119",username="root", password="123456", port=3306, location_type='remote')  
+    db = MySQLDatabase(username="root", password="123456", host="127.0.0.1", port=3306, location_type='local')  
     try:       
         db.create_database("example_database", charset='utf8', collation='utf8_unicode_ci')      
         fields = ["id INT AUTO_INCREMENT PRIMARY KEY", "name VARCHAR(255)", "age INT"]
@@ -314,4 +255,3 @@ if __name__ == "__main__":
 
     finally:
         db.close_connection()
-
