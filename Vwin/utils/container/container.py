@@ -409,7 +409,7 @@ attention:
 
 if __name__ == "__main__":
     remote_host = "47.100.19.119"
-    remote_user = "root"
+    remote_user = "zym"
     
     #定义本地主机的私钥路径
     private_key_path = "C:\\Users\\zym\\.ssh\\new_key"
