@@ -40,11 +40,18 @@ class MySQLDatabase:
     def _establish_ssh_connection(self):
         self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
     
-    def get_remote_file_transfer(self):        
-            transfer=FileTransfer(remote_host=self.host, remote_user=self.username, remote_password=self.password, private_key_path=self.private_key_path)
-            self._establish_ssh_connection()
-            ssh=self.ssh_singleton.get_ssh()            
-            return transfer,ssh
+    def execute_ssh_command(self, command):
+        print("Executing SSH command:", command)
+        self._establish_ssh_connection()
+        ssh = self.ssh_singleton.get_ssh()
+        stdin, stdout, stderr = ssh.exec_command(command)
+        output = stdout.read().decode('utf-8')
+        error = stderr.read().decode('utf-8')
+        return output, error
+    
+    def get_transfer(self):        
+        transfer=FileTransfer(remote_host=self.host, remote_user=self.username, remote_password=self.password, private_key_path=self.private_key_path)
+        return transfer
     
     
     def create_user_and_grant_privileges(self, new_user, new_user_password, pri_database='*', pri_table='*', pri_host='%'):
@@ -184,15 +191,16 @@ class MySQLDatabase:
     def import_database_remote(self, database_name, sql_file_path):
         try:
             # 在远程服务器上检查文件是否存在
-            transfer,ssh=self.get_remote_file_transfer()
-            _, stdout, stderr = ssh.exec_command(f"if [ -f {sql_file_path} ]; then echo 'true'; else echo 'false'; fi")
+            command=f"if [ -f {sql_file_path} ]; then echo 'true'; else echo 'false'; fi"
+            _, stdout, stderr = self.execute_ssh_command(command)
             if stdout.read().strip() == b'true':
                 # 如果远程文件存在，直接导入到数据库
                 logging.info(f"Importing existing remote SQL file: {sql_file_path} to database: {database_name}")
-                ssh.exec_command(f"/home/zym/anaconda3/bin/mysql -h 127.0.0.1 --port-3306 -u {self.username} -p{self.password} {database_name} < {sql_file_path}")
+                command = f"/home/zym/anaconda3/bin/mysql -h 127.0.0.1 --port-3306 -u {self.username} -p{self.password} {database_name} < {sql_file_path}"
+                self.execute_ssh_command(command)
             else:                
                 # 获取远程文件传输对象
-                transfer,ssh=self.get_remote_file_transfer()
+                transfer=self.get_transfer()
                 # 先将本地 SQL 文件上传到远程服务器的/tmp目录下
                 remote_file_path = f'/tmp/{os.path.basename(sql_file_path)}'
                
@@ -200,17 +208,14 @@ class MySQLDatabase:
                 transfer.upload(sql_file_path,'/tmp/')
                 
                 #再导入到数据库
-                transfer, ssh = self.get_remote_file_transfer()
                 logging.info(f"Importing uploaded SQL file: {remote_file_path} to database: {database_name}")
+                command = f"/home/zym/anaconda3/bin/mysql -h 127.0.0.1 --port=3306 -u {self.username} -p{self.password} {database_name} < {remote_file_path}"
+                self.execute_ssh_command(command)
                
-                ssh.exec_command(f"/home/zym/anaconda3/bin/mysql -h 127.0.0.1 --port=3306 -u {self.username} -p{self.password} {database_name} < {remote_file_path}")
-                print('kdk')
                 # 删除远程服务器上的临时 SQL 文件
-                # # 要重新获取ssh连接，否则会报错
-                # transfer, ssh = self.get_remote_file_transfer()
-                # logging.info(f"Deleting remote temporary SQL file: {remote_file_path}")
-                # ssh.exec_command(f"rm {remote_file_path}")
-
+                command = f"rm {remote_file_path}"
+                logging.info(f"Deleting remote temporary SQL file: {remote_file_path}")
+                self.execute_ssh_command(command)
             logging.info(f"Database '{database_name}' imported successfully.")
         except Exception as e:
             logging.error(f"Error occurred while importing the database remotely: {e}")
@@ -220,12 +225,11 @@ class MySQLDatabase:
 
     def export_database_remote(self, database_name, sql_file_path):
         try:
-            transfer, ssh = self.get_remote_file_transfer()
             remote_file_path = f'/tmp/{os.path.basename(sql_file_path)}'
             # 必须使用tcp连接，不能使用socket连接
             # 必须使用msqldump的绝对路径，否则会报错（因为msyqldump不在系统的环境变量中，如果在，直接用mysqldump就可以了）
             command = f"/home/zym/anaconda3/bin/mysqldump -h 127.0.0.1 --port=3306 -u {self.username} -p{self.password} {database_name} > {remote_file_path}"
-            _, stdout, stderr = ssh.exec_command(command)
+            _, stdout, stderr = self.ssh.exec_command(command)
             exit_status = stdout.channel.recv_exit_status()
           
             # 下载导出的 SQL 文件到本地
@@ -235,14 +239,13 @@ class MySQLDatabase:
             if not os.path.exists(local_file_path):
                 open(local_file_path, 'w').close()
             # 下载文件
+            transfer = self.get_transfer()
             transfer.download(local_path=os.path.dirname(local_file_path), remote_path=remote_file_path)
 
-            # 删除远程服务器上的 SQL 文件
-            # 要重新获取ssh连接，否则会报错
-            transfer, ssh = self.get_remote_file_transfer()
-           
-            print(f"Executing command to delete remote file: rm {remote_file_path}")            
-            _, stdout, stderr = ssh.exec_command(f"rm {remote_file_path}")
+            # 删除远程服务器上的 SQL 文件                      
+            print(f"Executing command to delete remote file: rm {remote_file_path}")
+            command = f"rm {remote_file_path}"            
+            _, stdout, stderr = self.ssh.exec_command(command)
             exit_status = stdout.channel.recv_exit_status()       
             logging.info(f"Database '{database_name}' exported successfully to {local_file_path}")            
         except Exception as e:
@@ -250,21 +253,19 @@ class MySQLDatabase:
             raise
 
 
-
-
-
-    def import_table_remote(self, database_name, tablename, sql_file_path):
+    def import_table_remote(self, database_name, tablename,sql_file_path):
         try:
             # 在远程服务器上检查文件是否存在
-            transfer,ssh=self.get_remote_file_transfer()
-            _, stdout, stderr = ssh.exec_command(f"if [ -f {sql_file_path} ]; then echo 'true'; else echo 'false'; fi")
+            command=f"if [ -f {sql_file_path} ]; then echo 'true'; else echo 'false'; fi"
+            _, stdout, stderr = self.execute_ssh_command(command)
             if stdout.read().strip() == b'true':
                 # 如果远程文件存在，直接导入到数据库
                 logging.info(f"Importing existing remote SQL file: {sql_file_path} to database: {database_name}")
-                ssh.exec_command(f"/home/zym/anaconda3/bin/mysql -h 127.0.0.1 --port-3306 -u {self.username} -p{self.password} {database_name} < {sql_file_path}")
+                command = f"/home/zym/anaconda3/bin/mysql -h 127.0.0.1 --port-3306 -u {self.username} -p{self.password} {database_name} < {sql_file_path}"
+                self.execute_ssh_command(command)
             else:                
                 # 获取远程文件传输对象
-                transfer,ssh=self.get_remote_file_transfer()
+                transfer=self.get_transfer()
                 # 先将本地 SQL 文件上传到远程服务器的/tmp目录下
                 remote_file_path = f'/tmp/{os.path.basename(sql_file_path)}'
                
@@ -272,17 +273,14 @@ class MySQLDatabase:
                 transfer.upload(sql_file_path,'/tmp/')
                 
                 #再导入到数据库
-                transfer, ssh = self.get_remote_file_transfer()
                 logging.info(f"Importing uploaded SQL file: {remote_file_path} to database: {database_name}")
+                command = f"/home/zym/anaconda3/bin/mysql -h 127.0.0.1 --port=3306 -u {self.username} -p{self.password} {database_name} < {remote_file_path}"
+                self.execute_ssh_command(command)
                
-                ssh.exec_command(f"/home/zym/anaconda3/bin/mysql -h 127.0.0.1 --port=3306 -u {self.username} -p{self.password} {database_name} < {remote_file_path}")
-                print('kdk')
                 # 删除远程服务器上的临时 SQL 文件
-                # # 要重新获取ssh连接，否则会报错
-                # transfer, ssh = self.get_remote_file_transfer()
-                # logging.info(f"Deleting remote temporary SQL file: {remote_file_path}")
-                # ssh.exec_command(f"rm {remote_file_path}")
-
+                command = f"rm {remote_file_path}"
+                logging.info(f"Deleting remote temporary SQL file: {remote_file_path}")
+                self.execute_ssh_command(command)
             logging.info(f"Database '{database_name}' imported successfully.")
         except Exception as e:
             logging.error(f"Error occurred while importing the database remotely: {e}")
@@ -292,12 +290,11 @@ class MySQLDatabase:
 
     def export_table_remote(self, database_name, tablename,sql_file_path):
         try:
-            transfer, ssh = self.get_remote_file_transfer()
             remote_file_path = f'/tmp/{os.path.basename(sql_file_path)}'
             # 必须使用tcp连接，不能使用socket连接
             # 必须使用msqldump的绝对路径，否则会报错（因为msyqldump不在系统的环境变量中，如果在，直接用mysqldump就可以了）
             command = f"/home/zym/anaconda3/bin/mysqldump -h 127.0.0.1 --port=3306 -u {self.username} -p{self.password} {database_name} {tablename} > {remote_file_path}"
-            _, stdout, stderr = ssh.exec_command(command)
+            _, stdout, stderr = self.ssh.exec_command(command)
             exit_status = stdout.channel.recv_exit_status()
           
             # 下载导出的 SQL 文件到本地
@@ -307,14 +304,13 @@ class MySQLDatabase:
             if not os.path.exists(local_file_path):
                 open(local_file_path, 'w').close()
             # 下载文件
+            transfer = self.get_transfer()
             transfer.download(local_path=os.path.dirname(local_file_path), remote_path=remote_file_path)
 
-            # 删除远程服务器上的 SQL 文件
-            # 要重新获取ssh连接，否则会报错
-            transfer, ssh = self.get_remote_file_transfer()
-           
-            print(f"Executing command to delete remote file: rm {remote_file_path}")            
-            _, stdout, stderr = ssh.exec_command(f"rm {remote_file_path}")
+            # 删除远程服务器上的 SQL 文件                      
+            print(f"Executing command to delete remote file: rm {remote_file_path}")
+            command = f"rm {remote_file_path}"            
+            _, stdout, stderr = self.ssh.exec_command(command)
             exit_status = stdout.channel.recv_exit_status()       
             logging.info(f"Database '{database_name}' exported successfully to {local_file_path}")            
         except Exception as e:

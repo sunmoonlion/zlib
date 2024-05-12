@@ -199,28 +199,28 @@ if __name__ == "__main__":
     
     # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
     remote_password = "alyfwqok"
+    # 上传好像要求传入一个文件夹！！！！！，待确认
+    # transfer = FileTransfer(remote_host, remote_user, private_key_path=private_key_path)
     
-    # file_transfer = FileTransfer(remote_host, remote_user, private_key_path=private_key_path)
-    
-    file_transfer = FileTransfer(remote_host, remote_user, remote_password)
+    transfer = FileTransfer(remote_host, remote_user, remote_password)
 
     # 文件夹
     local_item = '/home/WUYING_13701819268_15611880/Desktop/zlib/'  # 可以是文件或文件夹
     remote_item = '/home/zym/container/'  # 远程位置
     
-    file_transfer.upload(local_item, remote_item)
+    transfer.upload(local_item, remote_item)
 
     # # 上传文件
     # local_item = '/home/WUYING_13701819268_15611880/Desktop/docker-compose.yml'  # 可以是文件或文件夹
     # remote_item = '/home/zym/container/'  # 远程位置
-    # file_transfer.upload(local_item, remote_item)
+    # transfer.upload(local_item, remote_item)
 
     # # 下载文件夹
     # local_item = '/home/WUYING_13701819268_15611880/Desktop/hehe'  # 可以是文件或文件夹
     # remote_item = '/home/zym/container/'  # 远程位置
-    # file_transfer.download(remote_item, local_item)
+    # transfer.download(remote_item, local_item)
 
     # # 下载文件
     # local_item = '/home/WUYING_13701819268_15611880/Desktop/kk/'  # 可以是文件或文件夹
     # remote_item = '/home/zym/container/docker-compose.yml'  # 远程位置
-    # file_transfer.download(remote_item, local_item)
+    # transfer.download(remote_item, local_item)

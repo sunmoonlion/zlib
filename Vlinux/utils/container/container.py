@@ -39,10 +39,14 @@ class Container:
     def _establish_ssh_connection(self):
         self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
 
-    def load_file(self):
-        load_file = FileTransfer(self.remote_host, self.remote_user, self.remote_password, self.private_key_path)
-        print(f"Starting loading...")
-        load_file.upload(self.local_path, self.remote_path)
+    def execute_ssh_command(self, command):
+        print("Executing SSH command:", command)
+        self._establish_ssh_connection()
+        ssh = self.ssh_singleton.get_ssh()
+        stdin, stdout, stderr = ssh.exec_command(command)
+        output = stdout.read().decode('utf-8')
+        error = stderr.read().decode('utf-8')
+        return output, error
         
     # local_path目录里可能不仅有yaml文件，还有其他文件，所以要找到yaml文件
     def get_local_yml_path(self):
@@ -167,16 +171,7 @@ class Container:
             raise ValueError("Invalid location_type. Must be 'remote' or 'local'.")
         return False
 
-    def execute_ssh_command(self, command):
-        print("Executing SSH command:", command)
-        self._establish_ssh_connection()
-        ssh = self.ssh_singleton.get_ssh()
-        stdin, stdout, stderr = ssh.exec_command(command)
-        output = stdout.read().decode('utf-8')
-        error = stderr.read().decode('utf-8')
-        return output, error
-
-
+    
     def stop_services(self):
         # 停止指定的服务或所有服务
         if self.service_name is None:

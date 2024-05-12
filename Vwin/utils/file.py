@@ -176,27 +176,28 @@ if __name__ == "__main__":
     # # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
     # remote_password = "alyfwqok"
     
-    # file_transfer = FileTransfer(remote_host, remote_user, private_key_path=private_key_path)
+    # 上传好像要求传入一个文件夹！！！！！，待确认
+    # transfer = FileTransfer(remote_host, remote_user, private_key_path=private_key_path)
     
-    file_transfer = FileTransfer(remote_host, remote_user, remote_password)
+    transfer = FileTransfer(remote_host, remote_user, remote_password)
 
     # 文件夹
     local_path = "C:\\Users\\zym\\Desktop\\web_meiduo_mall_docker"
     remote_path = "/home/zym/container/"
-    file_transfer.upload(local_path, remote_path)
+    transfer.upload(local_path, remote_path)
 
     # # 上传文件
     # local_path = 'C:\\Users\\zym\\Desktop\\web_meiduo_mall_docker\\docker-compose.yml'  # 可以是文件或文件夹
     # remote_path = '/home/zym/container/'  # 远程位置
-    # file_transfer.upload(local_path, remote_path)
+    # transfer.upload(local_path, remote_path)
 
     # # 下载文件夹
     # local_path = 'C:\\Users\\zym\\Desktop\\Desktop' 
     # remote_path = '/home/zym/container/web_meiduo_mall_docker/backend'  # 远程位置
-    # file_transfer.download(remote_path, local_path)
+    # transfer.download(remote_path, local_path)
 
     # # 下载文件
     # local_path = 'C:\\Users\\zym\\Desktop\\Desktop' 
     # remote_path = '/home/zym/container/web_meiudo_mall_docker/backend/docker-compose.yml'  # 远程位置
-    # file_transfer.download(remote_path, local_path)
+    # transfer.download(remote_path, local_path)
 
