@@ -58,7 +58,7 @@ class Container:
 
     
     def load_config(self):
-        with open(self.get_local_yml_path(), "r") as config_file:
+        with open(self.get_local_yml_path(), "r",encoding='utf8') as config_file:
             self.config = yaml.safe_load(config_file)    
     
     def up_services(self):
@@ -518,6 +518,12 @@ if __name__ == "__main__":
     # # #创建远程实例并移除批量服务(而且移除相关数据卷)
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
+    #                             location_type='remote')
+    # db_remote_batch.down_services(remove_volumes=True)
+    
+    # # #创建远程实例并移除批量服务(而且移除相关数据卷)
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user,private_key_path=private_key_path,
     #                             location_type='remote')
     # db_remote_batch.down_services(remove_volumes=True)
 
