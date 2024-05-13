@@ -388,11 +388,7 @@ if __name__ == "__main__":
     password="123456"
     host = "47.100.19.119"
     port = 3306
-    
-    # msyql和mysqldump 命令路径(只有在导入导出数据时才需要)
-    mysql_path = 'c:\\Users\\zym\\anaconda3\\bin\\mysql'
-    mysqldump_path = 'c:\\Users\\zym\\anaconda3\\bin\\mysqldump'
-    
+        
     #远程连接参数
     location_type = "remote"
     remote_host = "47.100.19.119"

@@ -377,6 +377,7 @@ if __name__ == "__main__":
     host = "47.103.135.26"
     port = 3306
     #远程连接参数
+    location_type = "remote"
     remote_host = "47.103.135.26"
     remote_user = "zym"
     
@@ -404,7 +405,9 @@ if __name__ == "__main__":
         # columns = ['id', 'name', 'age']
         # db.insert_data(database_name="example_database", table_name="example_table", data=data, columns=columns)
         # db.select_data(database_name="example_database", table_name="example_table")
-        # db.export_database(database_name="example_database", sql_file_path="example_database.sql")  
+        # db.export_database(database_name="example_database", sql_file_path="example_database.sql")
+        db.import_database(database_name="meiduo_mall", sql_file_path=r"C:\Users\zym\Desktop\web_meiduo_mall_docker\backend\mysql\master_db2.sql")  
+
         # df = db.import_table_to_dataframe(database_name="example_database", table_name="example_table")
         # db.export_dataframe_to_table(dataframe=df, database_name="example_database", table_name="new_table")
         # db.delete_table(database_name="example_database", table_name="example_table")
