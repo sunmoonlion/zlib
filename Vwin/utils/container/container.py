@@ -42,9 +42,10 @@ class Container:
         self._establish_ssh_connection()
         ssh = self.ssh_singleton.get_ssh()
         stdin, stdout, stderr = ssh.exec_command(command)
+        stdin = None  # 不需要处理标准输入，将其置为 None      
         output = stdout.read().decode('utf-8')
-        error = stderr.read().decode('utf-8')
-        return output, error
+        error = stderr.read().decode('utf-8')        
+        return stdin,output, error
 
    
         
@@ -58,8 +59,21 @@ class Container:
   
     def get_remote_yml_path(self):
         command = f"find {self.remote_path} -type f -name docker-compose.yml"
-        stdout, stderr = self.execute_ssh_command(command)
-        remote_yml_path = stdout.strip()              
+        _,stdout, stderr = self.execute_ssh_command(command)
+        remote_yml_path = stdout.strip()
+    
+        # 如果远程路径中没有找到yml文件，那么上传文件
+        if not remote_yml_path:
+            self.load_file()
+    
+            # 再次尝试获取远程路径中的yml文件
+            _,stdout, stderr = self.execute_ssh_command(command)
+            remote_yml_path = stdout.strip()
+    
+            # 如果还是没有找到yml文件，那么抛出异常
+            if not remote_yml_path:
+                raise Exception("Failed to find yml file in remote path after uploading.")
+    
         return remote_yml_path
 
     
@@ -146,7 +160,7 @@ class Container:
             raise ValueError("Invalid action. Must be 'up', 'removed' or 'stopped'.")
         
         if self.location_type == 'remote':
-            stdout, stderr = self.execute_ssh_command(" ".join(command))
+            _,stdout, stderr = self.execute_ssh_command(" ".join(command))
             if name in stdout:
                 return True
         elif self.location_type == 'local':

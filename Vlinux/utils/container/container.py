@@ -44,9 +44,10 @@ class Container:
         self._establish_ssh_connection()
         ssh = self.ssh_singleton.get_ssh()
         stdin, stdout, stderr = ssh.exec_command(command)
+        stdin = None  # 不需要处理标准输入，将其置为 None      
         output = stdout.read().decode('utf-8')
-        error = stderr.read().decode('utf-8')
-        return output, error
+        error = stderr.read().decode('utf-8')        
+        return stdin,output, error
         
     # local_path目录里可能不仅有yaml文件，还有其他文件，所以要找到yaml文件
     def get_local_yml_path(self):
@@ -59,7 +60,7 @@ class Container:
   
     def get_remote_yml_path(self):
         command = f"find {self.remote_path} -type f -name docker-compose.yml"
-        stdout, stderr = self.execute_ssh_command(command)
+        _,stdout, stderr = self.execute_ssh_command(command)
         remote_yml_path = stdout.strip()
     
         # 如果远程路径中没有找到yml文件，那么上传文件
@@ -67,7 +68,7 @@ class Container:
             self.load_file()
     
             # 再次尝试获取远程路径中的yml文件
-            stdout, stderr = self.execute_ssh_command(command)
+            _,stdout, stderr = self.execute_ssh_command(command)
             remote_yml_path = stdout.strip()
     
             # 如果还是没有找到yml文件，那么抛出异常
@@ -160,7 +161,7 @@ class Container:
             raise ValueError("Invalid action. Must be 'up', 'removed' or 'stopped'.")
         
         if self.location_type == 'remote':
-            stdout, stderr = self.execute_ssh_command(" ".join(command))
+            _,stdout, stderr = self.execute_ssh_command(" ".join(command))
             if name in stdout:
                 return True
         elif self.location_type == 'local':
@@ -422,7 +423,7 @@ attention:
 """
 
 if __name__ == "__main__":
-    remote_host = "47.103.135.26"
+    remote_host = "47.100.19.119"
     remote_user = "zym"
     
     #定义本地主机的私钥路径
@@ -464,11 +465,11 @@ if __name__ == "__main__":
     #                             location_type='remote')
     # db_remote_batch.up_services()
     
-    #创建远程实例并启动批量服务 用ssh密钥连接
-    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
-                                remote_host=remote_host, remote_user=remote_user,location_type='remote',
-                                private_key_path=private_key_path)      
-    db_remote_batch.up_services()
+    # #创建远程实例并启动批量服务 用ssh密钥连接
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user,location_type='remote',
+    #                             private_key_path=private_key_path)      
+    # db_remote_batch.up_services()
 # 
     # # 创建不指定服务名称的本地实例以启动所有服务
     # db_local_all = Container(local_path=local_path, remote_path=remote_path)
@@ -538,11 +539,11 @@ if __name__ == "__main__":
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
     # db_remote_batch.down_services(remove_volumes=True)
     
-    # # #创建远程实例并移除批量服务(而且移除相关数据卷) 用ssh密钥连接
-    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
-    #                             remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path,
-    #                             location_type='remote')
-    # db_remote_batch.down_services(remove_volumes=True)
+    # #创建远程实例并移除批量服务(而且移除相关数据卷) 用ssh密钥连接
+    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+                                remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path,
+                                location_type='remote')
+    db_remote_batch.down_services(remove_volumes=True)
     
     # # #创建远程实例并移除批量服务(而且移除相关数据卷)
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
