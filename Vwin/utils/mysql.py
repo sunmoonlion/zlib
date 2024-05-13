@@ -197,7 +197,7 @@ class MySQLDatabase:
             # 在远程服务器上检查文件是否存在
             command = f"if [ -f {sql_file_path} ]; then echo 'true'; else echo 'false'; fi"
             _, stdout, stderr = self.execute_ssh_command(command)
-            if stdout.read().strip() == b'true':
+            if stdout == 'true':
                 # 如果远程文件存在，直接导入到数据库
                 logging.info(f"Importing existing remote SQL file: {sql_file_path} to database: {database_name}")
                 command = f"{self.remote_mysql_path} -h {self.host} --port={self.port} -u {self.username} -p{self.password} {database_name} < {sql_file_path}"
@@ -257,7 +257,7 @@ class MySQLDatabase:
             # 在远程服务器上检查文件是否存在
             command = f"if [ -f {sql_file_path} ]; then echo 'true'; else echo 'false'; fi"
             _, stdout, stderr = self.execute_ssh_command(command)
-            if stdout.read().strip() == b'true':
+            if stdout == 'true':
                 # 如果远程文件存在，直接导入到数据库
                 logging.info(f"Importing existing remote SQL file: {sql_file_path} to database: {database_name}")
                 command = f"{self.remote_mysql_path} -h {self.host} --port={self.port} -u {self.username} -p{self.password} {database_name} < {sql_file_path}"
@@ -402,8 +402,15 @@ if __name__ == "__main__":
     # remote_password = "alyfwqok"
     private_key_path = "c:\\Users\\zym\\.ssh\\id_rsa"
     
+    #mydwL和mysqldump命令的绝对路径
+    local_mysql_path = "c:\\Users\\zym\\anaconda3\\bin\\mysql"
+    local_mysqldump_path = "c:\\Users\\zym\\anaconda3\\bin\\mysqldump"
+    remote_mysql_path = "/home/zym/anaconda3/bin/mysql"
+    remote_mysqldump_path = "/home/zym/anaconda3/bin/mysqldump"
+    
     db = MySQLDatabase(username=username, password=password, host=host, port=port,
-                       location_type=location_type,remote_host=remote_host,remote_user=remote_user,private_key_path=private_key_path)  
+                       location_type=location_type,remote_host=remote_host,remote_user=remote_user,private_key_path=private_key_path,
+                       local_mysql_path=local_mysql_path,local_mysqldump_path=local_mysqldump_path, remote_mysql_path=remote_mysql_path,remote_mysqldump_path=remote_mysqldump_path)  
     try:       
         # db.create_database("example_database", charset='utf8', collation='utf8_unicode_ci')
         # print("Database created successfully.")      
@@ -415,7 +422,7 @@ if __name__ == "__main__":
         # db.insert_data(database_name="example_database", table_name="example_table", data=data, columns=columns)
         # db.select_data(database_name="example_database", table_name="example_table")
         # db.export_database(database_name="example_database", sql_file_path="example_database.sql")
-        # db.import_database(database_name="meiduo_mall", sql_file_path=r"C:\Users\zym\Desktop\web_meiduo_mall_docker\backend\mysql\master_db2.sql")  
+        db.import_database(database_name="meiduo_mall", sql_file_path=r"C:\Users\zym\Desktop\web_meiduo_mall_docker\backend\mysql\master_db2.sql")  
         # df = db.import_table_to_dataframe(database_name="example_database", table_name="example_table")
         # db.export_dataframe_to_table(dataframe=df, database_name="example_database", table_name="new_table")
         # db.delete_table(database_name="example_database", table_name="example_table")
