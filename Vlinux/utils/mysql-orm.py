@@ -4,7 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import logging
 from models import User, Base  # 假设你的模型文件名为 models.py
 
-class DatabaseManager:
+class MySQLdatabaseORM:
     def __init__(self, username, password, host, port, database):
         self.connection_string = f'mysql+pymysql://{username}:{password}@{host}:{port}/{database}'
         self.engine = create_engine(self.connection_string)
@@ -32,7 +32,7 @@ class DatabaseManager:
 
 # Example usage
 if __name__ == "__main__":
-    db_manager = DatabaseManager(username='root', password='password', host='localhost', port=3306, database='test_db')
+    db_manager = MySQLdatabaseORM(username='root', password='password', host='localhost', port=3306, database='test_db')
     db_manager.add_user('Alice', 'alice@example.com')
     user = db_manager.get_user(1)
     print(f"User fetched: {user.name}, {user.email}")

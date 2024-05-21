@@ -7,6 +7,9 @@ from sqlalchemy.orm import sessionmaker
 from file import FileTransfer, SSHSingleton
 
 class MySQLDatabase:
+    '''
+    本类用于建用户，建库，建表，导入导出数据库和表，以及将表导入到DataFrame中，其中，建表是采取直接使用SQL语句的方式，而不是使用ORM的方式，如果要使用ORM的方式，可以使用另一个类：MySQLDatabaseORM
+    '''
     def __init__(self, username, password, host='127.0.0.1', port=3306,
                  location_type='local',
                  remote_host=None, remote_user=None, remote_password=None, private_key_path=None,
@@ -270,3 +273,55 @@ class MySQLDatabase:
         except Exception as e:
             logging.error(f"Error occurred while exporting DataFrame to table: {e}")
             raise
+        
+if __name__ == "__main__":
+    #数据库连接参数
+    username = "root"
+    password="123456"
+    host = "47.103.135.26"
+    port = 3306
+    #远程连接参数
+    location_type = "remote"
+    remote_host = "47.103.135.26"
+    remote_user = "zym"
+    
+    #密钥和密码二选一
+    # remote_password = "alyfwqok"
+    private_key_path = "/home/WUYING_13701819268_15611880/.ssh/id_rsa"
+    
+    #mydwL和mysqldump命令的绝对路径
+    local_mysql_path = "/home/WUYING_13701819268_15611880/anaconda3/bin/mysql"
+    local_mysqldump_path = "/home/WUYING_13701819268_15611880/anaconda3/bin/mysqldump"
+    remote_mysql_path = "/home/zym/anaconda3/bin/mysql"
+    remote_mysqldump_path = "/home/zym/anaconda3/bin/mysqldump"
+    
+    db = MySQLDatabase(username="zym", password="123456", host="47.103.135.26", 
+                       port=3306,
+                       location_type='remote',remote_host=remote_host,remote_user=remote_user,private_key_path=private_key_path,
+                       local_mysql_path=local_mysql_path,local_mysqldump_path=local_mysqldump_path, remote_mysql_path=remote_mysql_path,remote_mysqldump_path=remote_mysqldump_path)  
+    try:       
+        # db.create_database("example_database", charset='utf8', collation='utf8_unicode_ci')
+        # print("Database created successfully.")      
+        # fields = ["id INT AUTO_INCREMENT PRIMARY KEY", "name VARCHAR(255)", "age INT"]
+        # db.create_table(database_name="example_database", table_name="example_table", fields=fields)
+        # print("Table created successfully.")
+        # data = [(None, 'Alice', 30), (None, 'Bob', 25)]
+        # columns = ['id', 'name', 'age']
+        # db.insert_data(database_name="example_database", table_name="example_table", data=data, columns=columns)
+        # db.select_data(database_name="example_database", table_name="example_table")
+        # db.export_database(database_name="example_database", sql_file_path="example_database.sql")
+        db.import_database(database_name="meiduo_mall", sql_file_path=r"C:\Users\zym\Desktop\web_meiduo_mall_docker\backend\mysql\master_db2.sql")  
+
+        # df = db.import_table_to_dataframe(database_name="example_database", table_name="example_table")
+        # db.export_dataframe_to_table(dataframe=df, database_name="example_database", table_name="new_table")
+        # db.delete_table(database_name="example_database", table_name="example_table")
+        # db.delete_database("example_database")
+        tb_spu=db.select_data('meiduo_mall', 'tb_spu')
+        print(tb_spu)
+
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
+
+    finally:
+        db.close_connection()
+
