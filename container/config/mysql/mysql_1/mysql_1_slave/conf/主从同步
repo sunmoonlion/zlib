@@ -1,0 +1,52 @@
+1、登录主机：
+
+mysql> mysql -h 127.0.0.1 --port=3306 --skip_ssl -uroot -p123456
+
+2、给予system_user权限(给予root账户，所以，上面一定是进入主机的root账号):
+
+mysql> grant system_user on *.* to 'root';
+
+
+3、创建ｓｌａｖｅ账号：
+
+mysql> CREATE USER 'slave'@'192.168.83.129' IDENTIFIED WITH mysql_native_password BY '123456';
+mysql> GRANT REPLICATION SLAVE ON *.* TO 'slave'@'192.168.83.129';
+
+3、刷新权限
+
+mysql> flush privileges;
+
+4、获取主机状态信息
+
+mysql> show master status;
+
+５、登录从机：
+
+mysql> mysql -h 127.0.0.1 --port=8306 --skip_ssl -uroot -p123456;
+
+６、在从（Slave）节点上设置主节点参数
+
+mysql> CHANGE MASTER TO MASTER_HOST='192.168.83.129',  -- 主服务器IP
+MASTER_USER='slave',                       -- 主服务器用户
+MASTER_PASSWORD='123456',                    -- 主服务器用户密码
+MASTER_LOG_FILE='mysql-bin.000003',                -- 主服务器
+MASTER_PORT=3306,                            -- 端口号默认3306
+MASTER_LOG_POS=230495;                         --  位置
+
+也就是：
+
+CHANGE MASTER TO MASTER_HOST='192.168.83.129',MASTER_USER='slave',MASTER_PASSWORD='123456',MASTER_LOG_FILE='mysql-bin.000003',MASTER_PORT=3306,MASTER_LOG_POS=230495,GET_MASTER_PUBLIC_KEY=1;
+
+７、查看（Slave）主从同步状态
+
+mysql> show slave status\G
+
+８、开启主从同步
+
+mysql> start slave;
+
+９、再查看主从同步状态
+
+mysql> show slave status\G
+
+

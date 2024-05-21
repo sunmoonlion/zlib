@@ -1,0 +1,175 @@
+version: "3.8"
+ 
+ 
+volumes: # 自定义数据卷
+  mysql_1_master_vol: 
+  mysql_1_slave_vol: 
+  redis_1_master_vol: 
+  redis_1_slave_vol: 
+  media_vol: #定义数据卷同步存放web项目用户上传到media文件夹的数据
+  static_vol: #定义数据卷同步存放web项目static文件夹的数据
+  tracker_vol: #定义数据卷同步存放web项目FastDFS的tracter的数据
+  storage_vol: #定义数据卷同步存放web项目FastDFS的storage的数据
+ 
+networks: # 自定义网络(默认桥接), 不使用links通信
+  nginx_network:
+    driver: bridge
+  mysql_1_network:
+    driver: bridge
+  redis_1_network: 
+    driver: bridge
+  elasticsearch_network:
+    driver: bridge
+  fastdfs_network:
+    driver: bridge 
+services:
+  redis_1_master:
+    image: redis:6.2.5
+    container_name: container_v1_redis_master
+    command: redis-server /etc/redis/redis.conf # 容器启动后启动redis服务器
+    networks:
+      - redis_1_network
+    volumes:
+      - redis_1_master_vol:/data # 通过挂载给redis数据备份
+      - ./redis/redis_1_master/redis.conf:/etc/redis/redis.conf # 挂载redis配置文件
+    ports:
+      - "6379:6379"
+    #restart: always # always表容器运行发生错误时一直重启
+ 
+  redis_2_slave:
+    image: redis:6.2.5
+    container_name: container_redis_2_slave
+    command: redis-server /etc/redis/redis.conf # 容器启动后启动redis服务器
+    networks:
+      - redis_1_network
+    volumes:
+      - redis_1_slave_vol:/data # 通过挂载给redis数据备份
+      - ./redis/redis_1_slave/redis.conf:/etc/redis/redis.conf # 挂载redis配置文件
+    ports:
+      - "6380:6379"
+    #restart: always # always表容器运行发生错误时一直重启
+  
+  mysql_1_master:
+    image: mysql:8.0.28
+    container_name: container_c3_mysql_1_master
+    env_file:  
+      - ./mysql/mysql_1/mysql_1_master/.env # 使用了环境变量文件
+    networks:  
+      - mysql_1_network
+    volumes:
+      - mysql_1_master_vol:/var/lib/mysql:rw # 挂载数据库数据, 可读可写
+      - ./mysql/mysql_1/mysql_1_master/conf/my.cnf_master:/etc/mysql/my.cnf # 挂载配置文件
+      - ./mysql/mysql_1/mysql_1_master/init/:/docker-entrypoint-initdb.d/ # 挂载数据初始化sql脚本
+    ports:
+      - "3306:3306" # 与配置文件保持一致
+    #restart: always
+ 
+  mysql_1_slave:
+    image: mysql:8.0.28
+    container_name: container_mysql_1_slave
+    env_file:  
+      - ./mysql/mysql_1/mysql_1_slave/.env # 使用了环境变量文件
+    networks:  
+      - mysql_1_network
+    volumes:
+      - mysql_1_slave_vol:/var/lib/mysql:rw # 挂载数据库数据, 可读可写
+      - ./mysql/mysql_1/mysql_1_slave/conf/my.cnf_slave:/etc/mysql/my.cnf # 挂载配置文件
+      - ./mysql/mysql_1/mysql_1_slave/init:/docker-entrypoint-initdb.d/ # 挂载数据初始化sql脚本
+    ports:
+      - "3307:3306" # 与配置文件保持一致
+    #restart: always
+
+
+  tracker:
+    image: delron/fastdfs
+    #restart: always
+    container_name: container_tracker
+    volumes:
+      - tracker_vol:/var/fdfs
+    command: "tracker"
+    networks:
+      - fastdfs_network
+    ports:
+      - "22122:22122"
+  storage:
+    image: delron/fastdfs
+    #restart: always
+    container_name: container_storage
+    volumes:
+      - storage_vol:/var/fdfs
+      - ./fastdfs/conf/storage.conf:/etc/fdfs/storage.conf # 挂载storage配置文件
+    command: "storage"
+    networks:
+      - fastdfs_network
+    ports:
+      - "23000:23000"
+      - "8888:8888"      #访问fastdfs的图片时，由于服务里用到nginx反向代理，所以，要映射出去
+  
+  elasticsearch:
+    image: "delron/elasticsearch-ik:2.4.6-1.0"
+
+    container_name: container_elasticsearch
+    #restart: always
+    volumes:
+      - ./elasticsearch-2.4.6/data:/usr/share/elasticsearch/data
+      - ./elasticsearch-2.4.6/conf/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+    environment:
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - discovery.type=single-node
+    networks:
+      - elasticsearch_network
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+      
+  web:
+    build: ./web
+    container_name: container_web
+    expose:
+      - "8000"
+    volumes:
+      - ./web/meiduo_mall:/var/www/html/meiduo_mall # 挂载项目代码
+      - static_vol:/var/www/html/meiduo_mall/static # 以数据卷挂载容器内static文件
+      - media_vol:/var/www/html/meiduo_mall/media # 以数据卷挂载容器内用户上传媒体文件
+      - ./web/log/meiduo_mall-uwsgi.log:/tmp/meiduo_mall-uwsgi.log # 挂载uwsgi日志
+    networks:
+      - nginx_network
+      - db_network  
+      - redis_network
+      - elasticsearch_network
+      - fastdfs_network
+    depends_on:
+      - db_master
+      - db_slave
+      - redis
+      - tracker
+      - storage
+      - elasticsearch
+    #restart: always
+    tty: true
+    stdin_open: true
+ 
+ 
+  nginx:
+    build: ./nginx
+    container_name: container_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    expose:
+      - "80"
+    volumes:
+      - ./nginx/conf/nginx.conf:/etc/nginx/conf.d/nginx.conf # 挂载nginx配置文件
+     #- ./nginx/ssl:/usr/share/nginx/ssl # 挂载ssl证书目录
+      - ./nginx/log:/var/log/nginx # 挂载日志
+      - static_vol:/usr/share/nginx/html/static # 挂载静态文件
+      - media_vol:/usr/share/nginx/html/media # 挂载用户上传媒体文件
+    networks:
+      - nginx_network
+    depends_on:
+      - web
+    #restart: always
+
+
+
+
