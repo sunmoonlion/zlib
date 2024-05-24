@@ -9,8 +9,8 @@ volumes: # 自定义数据卷
   media_vol: 
   static_vol: 
   tracker_vol: 
-  storage_master_vol: 
-  storage_slave_vol:
+  storage_vol: 
+  
  
 networks: # 自定义网络(默认桥接), 不使用links通信
   nginx_network:
@@ -50,11 +50,12 @@ services:
     ports:
       - "6380:6379"
     #restart: always # always表容器运行发生错误时一直重启
+
   db_master:
     image: mysql:8.0.28
     container_name: container_db_master
     env_file:  
-      - ./mysql/env/.env # 使用了环境变量文件
+      - ./mysql/master/env/.env # 使用了环境变量文件
     networks:  
       - db_network
     volumes:
@@ -121,34 +122,7 @@ services:
       - elasticsearch_network
     ports:
       - "9200:9200"
-      - "9300:9300"
-      
-  web:
-    build: ./web
-    container_name: container_web
-    expose:
-      - "8000"
-    volumes:
-      - ./web/meiduo_mall:/var/www/html/meiduo_mall # 挂载项目代码
-      - static_vol:/var/www/html/meiduo_mall/static # 以数据卷挂载容器内static文件
-      - media_vol:/var/www/html/meiduo_mall/media # 以数据卷挂载容器内用户上传媒体文件
-      - ./web/log/meiduo_mall-uwsgi.log:/tmp/meiduo_mall-uwsgi.log # 挂载uwsgi日志
-    networks:
-      - nginx_network
-      - db_network  
-      - redis_network
-      - elasticsearch_network
-      - fastdfs_network
-    depends_on:
-      - db_master
-      - db_slave
-      - redis
-      - tracker
-      - storage
-      - elasticsearch
-    #restart: always
-    tty: true
-    stdin_open: true
+      - "9300:9300"      
  
  
   nginx:
@@ -167,8 +141,6 @@ services:
       - media_vol:/usr/share/nginx/html/media # 挂载用户上传媒体文件
     networks:
       - nginx_network
-    depends_on:
-      - web
     #restart: always
 
 
