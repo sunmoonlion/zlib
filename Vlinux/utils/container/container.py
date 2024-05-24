@@ -423,16 +423,19 @@ attention:
 """
 
 if __name__ == "__main__":
-    remote_host = "47.100.19.119"
+    remote_host = "47.103.135.26"
     remote_user = "zym"
     
     #定义本地主机的私钥路径
-    private_key_path = "/home/WUYING_13701819268_15611880/.ssh/new_key"
+    # private_key_path = "/home/WUYING_13701819268_15611880/.ssh/new_key"
+    private_key_path = "/home/zym/.ssh/new_key"
     
     # # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
     # remote_password = "alyfwqok"
     
-    local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
+    # local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
+    local_path = "/home/zym/zlib/container/proj1"
+    
     remote_path = "/home/zym/container"
 
     # 定义单个服务名称
@@ -465,11 +468,11 @@ if __name__ == "__main__":
     #                             location_type='remote')
     # db_remote_batch.up_services()
     
-    # #创建远程实例并启动批量服务 用ssh密钥连接
-    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
-    #                             remote_host=remote_host, remote_user=remote_user,location_type='remote',
-    #                             private_key_path=private_key_path)      
-    # db_remote_batch.up_services()
+    #创建远程实例并启动批量服务 用ssh密钥连接
+    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+                                remote_host=remote_host, remote_user=remote_user,location_type='remote',
+                                private_key_path=private_key_path)      
+    db_remote_batch.up_services()
 # 
     # # 创建不指定服务名称的本地实例以启动所有服务
     # db_local_all = Container(local_path=local_path, remote_path=remote_path)
@@ -539,11 +542,11 @@ if __name__ == "__main__":
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password)
     # db_remote_batch.down_services(remove_volumes=True)
     
-    # #创建远程实例并移除批量服务(而且移除相关数据卷) 用ssh密钥连接
-    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
-                                remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path,
-                                location_type='remote')
-    db_remote_batch.down_services(remove_volumes=True)
+    # # #创建远程实例并移除批量服务(而且移除相关数据卷) 用ssh密钥连接
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path,
+    #                             location_type='remote')
+    # db_remote_batch.down_services(remove_volumes=True)
     
     # # #创建远程实例并移除批量服务(而且移除相关数据卷)
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
