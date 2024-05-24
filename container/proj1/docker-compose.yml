@@ -1,86 +1,83 @@
 version: "3.8"
  
-# 数据卷编号规则：c(容器)1（容器编号)p(项目)1(项目编号_mysql(容器类型)_1(容器类型组编号)_master(主从)_vol(卷名) 
-volumes: # 自定义数据卷  
-  v1p1_redis_1_master_vol: 
-  v2p1_redis_1_slave_vol:
-  v3p1_mysql_1_master_vol: 
-  v4p1_mysql_1_slave_vol:  
-  p1_media_vol: 
-  p1_static_vol: 
-  tracker_vol: 
-  storage_vol: 
  
-# 网络编号规则：n(容器)1（网络编号)p(项目)1(项目编号_mysql(容器类型)_1(容器类型组编号)_network(卷名) 
+volumes: # 自定义数据卷
+  db_master_vol: 
+  db_slave_vol: 
+  redis_master_vol: 
+  redis_slave_vol:
+  media_vol: 
+  static_vol: 
+  tracker_vol: 
+  storage_master_vol: 
+  storage_slave_vol:
+ 
 networks: # 自定义网络(默认桥接), 不使用links通信
-  n1p1_redis_1_network: 
+  nginx_network:
     driver: bridge
-  n2p1_mysql_1_network:
+  db_network:
+    driver: bridge
+  redis_network: 
     driver: bridge
   elasticsearch_network:
     driver: bridge
   fastdfs_network:
     driver: bridge
-  nginx_network:
-    driver: bridge
 
-# 服务编号规则：s(服务)1（服务编号)p(项目)1(项目编号_mysql(容器类型)_1(容器类型组编号)_master(主从)  
 services:
-  s1p1_redis_1_master:
+  redis_master:
     image: redis:6.2.5
-    # 容器规则：c(容器)1（容器编号)p(项目)1(项目编号_mysql(容器类型)_1(容器类型组编号)_master(主从) 
-    container_name: c1p1_redis_1_master
+    container_name: container_redis_master
     command: redis-server /etc/redis/redis.conf # 容器启动后启动redis服务器
     networks:
-      - n1p1_redis_1_network
+      - redis_network
     volumes:
-      - v1p1_redis_1_master_vol:/data # 通过挂载给redis数据备份
-      - ./redis/b1p1_redis_1_master/redis.conf:/etc/redis/redis.conf # 挂载redis配置文件（这是绑定，不同于上面的具名挂载，因此，命名也不同，绑定挂载将具名挂载的v换成b,其他方法不变，结尾去除_vol）
+      - redis_master_vol:/data # 通过挂载给redis数据备份
+      - ./redis/master/redis.conf:/etc/redis/redis.conf # 挂载redis配置文件
     ports:
       - "6379:6379"
     #restart: always # always表容器运行发生错误时一直重启
  
-  s2p1_redis_1_slave:
+  redis_slave:
     image: redis:6.2.5
-    container_name: c2p1_redis_1_slave
+    container_name: container_redis_slave
     command: redis-server /etc/redis/redis.conf # 容器启动后启动redis服务器
     networks:
-      - redis_1_network
+      - redis_network
     volumes:
-      - redis_1_slave_vol:/data # 通过挂载给redis数据备份
-      - ./redis/b2p1_redis_1_slave/redis.conf:/etc/redis/redis.conf # 挂载redis配置文件
+      - redis_slave_vol:/data # 通过挂载给redis数据备份
+      - ./redis/slave/redis.conf:/etc/redis/redis.conf # 挂载redis配置文件
     ports:
       - "6380:6379"
     #restart: always # always表容器运行发生错误时一直重启
-  
-  s3p1_mysql_1_master:
+  db_master:
     image: mysql:8.0.28
-    container_name: c3p1_mysql_1_master
+    container_name: container_db_master
     env_file:  
-      - ./mysql/b3p1_mysql_1_master/.env # 使用了环境变量文件
+      - ./mysql/env/.env # 使用了环境变量文件
     networks:  
-      - n2p1_mysql_1_network
+      - db_network
     volumes:
-      - v3p1_mysql_1_master_vol:/var/lib/mysql:rw # 挂载数据库数据, 可读可写
-      - ./mysql/b3p1_mysql_1_master/conf/my.cnf_master:/etc/mysql/my.cnf # 挂载配置文件
-      - ./mysql/b3p1_mysql_1_master/init/:/docker-entrypoint-initdb.d/ # 挂载数据初始化sql脚本
+      - db_master_vol:/var/lib/mysql:rw # 挂载数据库数据, 可读可写
+      - ./mysql/master/conf/my.cnf:/etc/mysql/my.cnf # 挂载配置文件
+      - ./mysql/master/init/:/docker-entrypoint-initdb.d/ # 挂载数据初始化sql脚本
     ports:
       - "3306:3306" # 与配置文件保持一致
     #restart: always
  
-  s4p1_mysql_1_slave:
+  db_slave:
     image: mysql:8.0.28
-    container_name: c4p1_mysql_1_slave
+    container_name: container_db_slave
     env_file:  
-      - ./mysql/b4p1_mysql_1_slave/.env # 使用了环境变量文件
+      - ./mysql/slave/env/.env # 使用了环境变量文件
     networks:  
-      - n2p1_mysql_1_network
+      - db_network
     volumes:
-      - v4p1_mysql_1_slave_vol:/var/lib/mysql:rw # 挂载数据库数据, 可读可写
-      - ./mysql/b4p1_mysql_1_slave/conf/my.cnf_master:/etc/mysql/my.cnf # 挂载配置文件
-      - ./mysql/b4p1_mysql_1_slave/init/:/docker-entrypoint-initdb.d/ # 挂载数据初始化sql脚本
+      - db_slave_vol:/var/lib/mysql:rw # 挂载数据库数据, 可读可写
+      - ./mysql/slave/conf/my.cnf_slave:/etc/mysql/my.cnf # 挂载配置文件
+      - ./mysql/slave/init:/docker-entrypoint-initdb.d/ # 挂载数据初始化sql脚本
     ports:
-      - "3307:3306" # 与配置文件保持一致
+      - "8306:8306" # 与配置文件保持一致
     #restart: always
 
 
