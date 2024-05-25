@@ -65,7 +65,8 @@ class Container:
     
         # 如果远程路径中没有找到yml文件，那么上传文件
         if not remote_yml_path:
-            self.load_file()
+            transfer = FileTransfer(self.remote_host, self.remote_user, self.remote_password,self.private_key_path)    
+            transfer.upload(self.local_path, self.remote_path)
     
             # 再次尝试获取远程路径中的yml文件
             _,stdout, stderr = self.execute_ssh_command(command)
@@ -434,7 +435,7 @@ if __name__ == "__main__":
     # remote_password = "alyfwqok"
     
     # local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
-    local_path = "/home/zym/zlib/container/proj1"
+    local_path = "/home/zym/zlib/container/config"
     
     remote_path = "/home/zym/container"
 

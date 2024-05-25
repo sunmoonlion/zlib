@@ -2,10 +2,10 @@ version: "3.8"
  
  
 volumes: # 自定义数据卷
-  db_master_vol: 
-  db_slave_vol: 
-  redis_master_vol: 
-  redis_slave_vol:
+  p1_v_mysql_master_1: 
+  p1_v-mysql_slave_1: 
+  p1_v_redis_master_vol: 
+  p1_v_redis_slave_vol:
   media_vol: 
   static_vol: 
   tracker_vol: 
@@ -13,11 +13,11 @@ volumes: # 自定义数据卷
   
  
 networks: # 自定义网络(默认桥接), 不使用links通信
-  nginx_network:
+  p1_n_nnginx_master_1:
     driver: bridge
-  db_network:
+  p1_n_mysql_master_1:
     driver: bridge
-  redis_network: 
+  p1_n_redis_master_1: 
     driver: bridge
   elasticsearch_network:
     driver: bridge
@@ -25,60 +25,60 @@ networks: # 自定义网络(默认桥接), 不使用links通信
     driver: bridge
 
 services:
-  redis_master:
+  p1_s_redis_master_1:
     image: redis:6.2.5
-    container_name: container_redis_master
+    container_name: p1_c_redis_master
     command: redis-server /etc/redis/redis.conf # 容器启动后启动redis服务器
     networks:
-      - redis_network
+      - p1_n_redis_master_1
     volumes:
-      - redis_master_vol:/data # 通过挂载给redis数据备份
-      - ./redis/master/redis.conf:/etc/redis/redis.conf # 挂载redis配置文件
+      - p1_v_redis_master_1:/data # 通过挂载给redis数据备份
+      - ./redis/p1_b_redis_master_1/redis.conf:/etc/redis/redis.conf # 挂载redis配置文件
     ports:
       - "6379:6379"
     #restart: always # always表容器运行发生错误时一直重启
  
-  redis_slave:
+  p1_s_redis_slave_1:
     image: redis:6.2.5
-    container_name: container_redis_slave
+    container_name: p1_c_redis_slave_1
     command: redis-server /etc/redis/redis.conf # 容器启动后启动redis服务器
     networks:
-      - redis_network
+      - p1_n_redis_master_1
     volumes:
-      - redis_slave_vol:/data # 通过挂载给redis数据备份
-      - ./redis/slave/redis.conf:/etc/redis/redis.conf # 挂载redis配置文件
+      - p1_v_redis_slave_1:/data # 通过挂载给redis数据备份
+      - ./redis/p1_b_redis_slave_1/redis.conf:/etc/redis/redis.conf # 挂载redis配置文件
     ports:
       - "6380:6379"
     #restart: always # always表容器运行发生错误时一直重启
 
-  db_master:
+  p1_s_mysql_master_1:
     image: mysql:8.0.28
-    container_name: container_db_master
+    container_name: p1_c_mysql_master_1
     env_file:  
-      - ./mysql/master/env/.env # 使用了环境变量文件
+      - ./mysql/p1_b_mysql_master_1/env/.env # 使用了环境变量文件
     networks:  
-      - db_network
+      - p1_n_mysql_master_1
     volumes:
-      - db_master_vol:/var/lib/mysql:rw # 挂载数据库数据, 可读可写
-      - ./mysql/master/conf/my.cnf:/etc/mysql/my.cnf # 挂载配置文件
-      - ./mysql/master/init/:/docker-entrypoint-initdb.d/ # 挂载数据初始化sql脚本
+      - p1_v_mysql_master_1:/var/lib/mysql:rw # 挂载数据库数据, 可读可写
+      - ./mysql/p1_b_mysql_master_1/conf/my.cnf:/etc/mysql/my.cnf # 挂载配置文件
+      - ./mysql/p1_mysql_master_1/init/:/docker-entrypoint-initdb.d/ # 挂载数据初始化sql脚本
     ports:
       - "3306:3306" # 与配置文件保持一致
     #restart: always
  
-  db_slave:
+  p1_s_mysql_slave_1:
     image: mysql:8.0.28
-    container_name: container_db_slave
+    container_name: p1_c_mysql_slave_1
     env_file:  
-      - ./mysql/slave/env/.env # 使用了环境变量文件
+      - ./mysql/p1_b_mysql_slave-1/env/.env # 使用了环境变量文件
     networks:  
-      - db_network
+      - p1_n_mysql_master_1
     volumes:
-      - db_slave_vol:/var/lib/mysql:rw # 挂载数据库数据, 可读可写
-      - ./mysql/slave/conf/my.cnf_slave:/etc/mysql/my.cnf # 挂载配置文件
-      - ./mysql/slave/init:/docker-entrypoint-initdb.d/ # 挂载数据初始化sql脚本
+      - p1_v_mysql_slave_1:/var/lib/mysql:rw # 挂载数据库数据, 可读可写
+      - ./mysql/p1_b_mysql_slave_1/conf/my.cnf:/etc/mysql/my.cnf # 挂载配置文件
+      - ./mysql/p1_b_mysql_slave_1/init:/docker-entrypoint-initdb.d/ # 挂载数据初始化sql脚本
     ports:
-      - "8306:8306" # 与配置文件保持一致
+      - "3307:3306" # 与配置文件保持一致
     #restart: always
 
 
