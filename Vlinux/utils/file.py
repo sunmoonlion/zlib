@@ -120,6 +120,7 @@ class FileTransfer:
             return False
         
     def upload(self, local_path, remote_path):
+        print('start uploading...')
         try:
             if os.path.isdir(local_path):
                 #os.path.isdir是判断是否是文件夹，不是文件，它只是判断最后不是/的部分，无论是否是/结尾，都会返回True，比如/home/zym/和/home/zym是一样的
@@ -140,14 +141,15 @@ class FileTransfer:
                 remote_path = os.path.join(remote_path, os.path.basename(local_path))
                 self._upload_file(local_path, remote_path)
                 
-            print("上传成功。")  
+            print("uploadling success!")  
         except RuntimeError as e:
-            print(f"上传失败：{str(e)}")
+            print(f"uploading failure：{str(e)}")
             raise e
         finally:
             self.ssh_singleton.close()
 
     def download(self, remote_path, local_path):
+        print('start downloading... ')
         try:
             self._establish_ssh_connection()
             ssh = self.ssh_singleton.get_ssh()
@@ -160,11 +162,11 @@ class FileTransfer:
                     self._download_directory(sftp, remote_path, local_path)
                 else:
                     self._download_file(sftp, remote_path, local_path)
-                print("下载成功。")
+                print("download success!")
             finally:
                 sftp.close()
         except RuntimeError as e:
-            print(f"下载失败：{str(e)}")
+            print(f"download failure：{str(e)}")
             raise e
         finally:
             self.ssh_singleton.close()

@@ -432,7 +432,7 @@ if __name__ == "__main__":
     private_key_path = "/home/zym/.ssh/new_key"
     
     # # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
-    # remote_password = "alyfwqok"
+    # remote_password = "alyfwqok"l
     
     # local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
     local_path = "/home/zym/zlib/container/config"
@@ -440,10 +440,10 @@ if __name__ == "__main__":
     remote_path = "/home/zym/container"
 
     # 定义单个服务名称
-    service_name_single = "db_master"
+    service_name_single = "p1_s_mysql_master_1"
 
     #定义多个服务名称
-    service_names_batch = ["db_master","db_slave"]
+    service_names_batch = ["p1_s_mysql_master_1","p1_s_mysql_slave_1"]
     
     
     
