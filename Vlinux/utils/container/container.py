@@ -435,15 +435,15 @@ if __name__ == "__main__":
     # remote_password = "alyfwqok"l
     
     # local_path = "/home/WUYING_13701819268_15611880/Desktop/web_meiduo_mall_docker"
-    local_path = "/home/zym/zlib/container/config"
+    local_path = "/home/zym/container/config"
     
     remote_path = "/home/zym/container"
 
     # 定义单个服务名称
-    service_name_single = "p1_s_mysql_master_1"
+    service_name_single = "p0_s_mysql_master_1"
 
     #定义多个服务名称
-    service_names_batch = ["p1_s_mysql_master_1","p1_s_mysql_slave_1"]
+    service_names_batch = ["p0_s_mysql_master_1","p0_s_mysql_slave_1"]
     
     
     
