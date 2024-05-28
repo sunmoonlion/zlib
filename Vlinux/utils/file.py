@@ -196,26 +196,26 @@ if __name__ == "__main__":
     remote_host = '47.103.135.26'
     remote_user = 'zym'
     
-    # #定义本地主机的私钥路径
-    # private_key_path = "/home/WUYING_13701819268_15611880/.ssh/new_key"
+    #定义本地主机的私钥路径
+    private_key_path = "/home/zym/.ssh/new_key"
     
-    # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
+    # # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
     remote_password = "alyfwqok"
-    # 上传好像要求传入一个文件夹！！！！！，待确认
-    # transfer = FileTransfer(remote_host, remote_user, private_key_path=private_key_path)
+    # # 上传要求传入一个文件夹！！！！！
+    transfer = FileTransfer(remote_host, remote_user, private_key_path=private_key_path)
     
-    transfer = FileTransfer(remote_host, remote_user, remote_password)
-
-    # 文件夹
-    local_item = '/home/WUYING_13701819268_15611880/Desktop/zlib/'  # 可以是文件或文件夹
-    remote_item = '/home/zym/container/'  # 远程位置
-    
-    transfer.upload(local_item, remote_item)
-
-    # # 上传文件
-    # local_item = '/home/WUYING_13701819268_15611880/Desktop/docker-compose.yml'  # 可以是文件或文件夹
+    # transfer = FileTransfer(remote_host, remote_user, remote_password=remote_password)
+   
+    # # 文件夹
+    # local_item = '/home/zym/zlib/'  # 可以是文件或文件夹
     # remote_item = '/home/zym/container/'  # 远程位置
+    
     # transfer.upload(local_item, remote_item)
+
+    # 上传文件
+    local_item = '/home/zym/web_meiduo_mall_docker/backend/mysql/master_db2.sql'  # 可以是文件或文件夹
+    remote_item = '/home/zym/container/'  # 远程位置
+    transfer.upload(local_item, remote_item)
 
     # # 下载文件夹
     # local_item = '/home/WUYING_13701819268_15611880/Desktop/hehe'  # 可以是文件或文件夹
