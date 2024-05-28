@@ -141,11 +141,12 @@ class MySQLDatabase:
 
     def import_database_remote(self, database_name, sql_file_path):
         try:
-            transfer = self.get_transfer()
+            transfer = self.get_transfer()         
+            # 上传时，远程要求时文件夹
+            transfer.upload(sql_file_path, "/tmp/")
+            # 导入时要求时文件下的数据文件
             remote_sql_path = f"/tmp/{os.path.basename(sql_file_path)}"
-            transfer.upload(sql_file_path, remote_sql_path)
-
-            command = f"{self.remote_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h {self.mysqlhost} --port={self.mysqlport} {database_name} < {remote_sql_path}"
+            command = f"{self.remote_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h 127.0.0.1 --port={self.mysqlport} {database_name} < {remote_sql_path}"
             self.execute_ssh_command(command)
             logging.info(f"Database '{database_name}' imported successfully from remote SQL file.")
         except Exception as e:
@@ -538,7 +539,7 @@ if __name__ == "__main__":
         # db.select_data(database_name="example_database", table_name="example_table")
         # db.export_database(database_name="example_database", sql_file_path="example_database.sql")
         # db.import_database(database_name="meiduo_mall", sql_file_path=r"C:\Users\zym\Desktop\web_meiduo_mall_docker\backend\mysql\master_db2.sql")  
-        db.import_database(database_name="mydream", sql_file_path="/home/zym/web_meiduo_mall_docker/backend/mysql/master_db2.sql")
+        db.import_database('mydream',"/home/zym/web_meiduo_mall_docker/backend/mysql/master_db2.sql")
         # df = db.import_table_to_dataframe(database_name="example_database", table_name="example_table")
         # db.export_dataframe_to_table(dataframe=df, database_name="example_database", table_name="new_table")
         # db.delete_table(database_name="example_database", table_name="example_table")

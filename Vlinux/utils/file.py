@@ -138,6 +138,7 @@ class FileTransfer:
                 remote_path = self._normalize_path(remote_path,is_directory=False)
                 
                 self.create_remote_directory(remote_path)
+                #由于上传时远程传入的是文件夹，所以，要将remote_path变成文件夹下的文件路径，这样才能调用_upload_file函数
                 remote_path = os.path.join(remote_path, os.path.basename(local_path))
                 self._upload_file(local_path, remote_path)
                 
@@ -201,7 +202,7 @@ if __name__ == "__main__":
     
     # # #定义远程主机的密码,如果使用私钥连接则不需要!!!!
     remote_password = "alyfwqok"
-    # # 上传要求传入一个文件夹！！！！！
+    
     transfer = FileTransfer(remote_host, remote_user, private_key_path=private_key_path)
     
     # transfer = FileTransfer(remote_host, remote_user, remote_password=remote_password)
@@ -214,15 +215,18 @@ if __name__ == "__main__":
 
     # 上传文件
     local_item = '/home/zym/web_meiduo_mall_docker/backend/mysql/master_db2.sql'  # 可以是文件或文件夹
+    # # 上传时远程要求传入一个文件夹！！！！！
     remote_item = '/home/zym/container/'  # 远程位置
     transfer.upload(local_item, remote_item)
 
     # # 下载文件夹
     # local_item = '/home/WUYING_13701819268_15611880/Desktop/hehe'  # 可以是文件或文件夹
+    # # 下载时远程也要求传入一个文件夹！！！！！
     # remote_item = '/home/zym/container/'  # 远程位置
     # transfer.download(remote_item, local_item)
 
     # # 下载文件
     # local_item = '/home/WUYING_13701819268_15611880/Desktop/kk/'  # 可以是文件或文件夹
-    # remote_item = '/home/zym/container/docker-compose.yml'  # 远程位置
+    # # 下载时远程也要求传入一个文件夹！！！！！
+    # remote_item = '/home/zym/container/'  # 远程位置
     # transfer.download(remote_item, local_item)
