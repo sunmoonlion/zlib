@@ -6,15 +6,16 @@ import subprocess
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from file import FileTransfer, SSHSingleton
-
+from container.container import Container
+from time import sleep
 # 本数据库导入时，如果不想导入特定的数据库或表，那么就可以用iimport_all_databases_from_sql_file或export_all_databases_from_sql_file把所有的数据库导入导出（数据库文件中要有创建数据库的mysql语句）
 # 只有想导入导出特定的数据库，才考虑用import_database,export_database（要指定数据库，导入的数据库文件要包含创建数据库的mysql语句）,import_table.export_tabl（要使用指定的数据库，要包含指定的表，数据库文件中要有表创建mysql语句）函数
 class MySQLDatabase:
     def __init__(self, mysqlusername, mysqlpassword, mysqlhost='127.0.0.1', mysqlport=3306,
+                 container_is_up=True,
                  location_type='local',
-                 remote_host=None, remote_user=None, remote_password=None, private_key_path=None,
-                 local_mysql_path='/home/zym/anaconda3/bin/mysql', local_mysqldump_path='/home/zym/anaconda3/bin/mysqldump',
-                 remote_mysql_path='/home/zym/anaconda3/bin/mysql', remote_mysqldump_path='/home/zym/anaconda3/bin/mysqldump'):
+                 local_path=None,remote_path=None,service_name=None,remote_host=None,remote_user=None,private_key_path=None,remote_password=None, max_attempts=None,sleep_time=None,
+                 local_mysql_path=None, local_mysqldump_path=None,remote_mysql_path=None, remote_mysqldump_path= None):
         
         # 定义数据库连接参数，包括数据库的用户名、数据库的密码、数据库所在主机地址和端口
         # 注意数据库的主机地址和端口，既可以是本地，也可以是远程
@@ -23,35 +24,54 @@ class MySQLDatabase:
         self.mysqlhost = mysqlhost
         self.mysqlport = mysqlport
         
+        #定义数据库容器是否开启
+        self.container_is_up = container_is_up
         # 定义是否是远程连接的标志，如果是远程连接，则需要提供远程主机的相关信息
-        # 远程连接只有在导入和导出远程的数据库和表到本地文件系统和dataframe时才需要，其他操作都不需要,因为，数据库的其他操作既可以在本地也可以在远程操作，如果数据库在本地，则host为本地IP地址，否则为远程IP地址，
-        # 只有在导入导出数据库时，因为要运行命令行，所以才分为本地和远程，不过，远程数据库导出的文件会被下载到本地，而导入远程数据库的文件如果远程没有，则会从本地上传到远程，然后再执行导入
+        #定义要导入的数据库是在本地还是远程
         self.location_type = location_type
-        
-        # 定义远程主机而不是数据库的的相关信息
+        # 定义创建容器的初始化参数
+        #定义创建容器的yaml文件及其相关文件的地址
+        self.local_path = local_path
+        self.remote_path = remote_path 
+        # 定义要启动的服务（容器）
+        self.service_name = service_name  
+        # 定义远程连接时所需要的主机地址，用户名和密钥或密码
         self.remote_host = remote_host
-        
-        # 定义远程用户信息
         self.remote_user = remote_user
-        
-        # 定义远程主机的私钥路径,密钥和密码二选一
-        self.remote_password = remote_password
         self.private_key_path = private_key_path
-        
-        # 定义SSH单例对象
-        self.ssh_singleton = SSHSingleton()
-        # MySQL 和 mysqldump 命令的绝对路径
+        self.remote_password = remote_password
+        #定义创建远程容器的尝试次数和时间
+        self.max_attempts = max_attempts
+        self.sleep_time = sleep_time
+        # MySQL 和 mysqldump 命令的绝对路径，以便对数据库进行导入和导出操作
         self.local_mysql_path = local_mysql_path
         self.local_mysqldump_path = local_mysqldump_path
         self.remote_mysql_path = remote_mysql_path
-        self.remote_mysqldump_path = remote_mysqldump_path         
-              
+        self.remote_mysqldump_path = remote_mysqldump_path 
+        
+        # 定义SSH单例对象
+        self.ssh_singleton = SSHSingleton()
+        
+        self.up_container()
+        
+        
         try:
             self.engine = create_engine(f"mysql+pymysql://{mysqlusername}:{mysqlpassword}@{mysqlhost}:{mysqlport}/")
         except SQLAlchemyError as e:
             logging.error(f"Error occurred while connecting to the database: {e}")
             raise
-
+        
+    def up_container(self):
+        if not self.container_is_up:
+            try:
+                container = Container(self.local_path, self.remote_path, self.location_type, self.service_name,
+                                      self.remote_host, self.remote_user,self.private_key_path, self.remote_password,
+                                      self.max_attempts, self.sleep_time)
+                container.up_services()
+            except Exception as e:
+                logging.error(f"Error occurred while starting the container: {e}")
+                raise     
+    
     def _establish_ssh_connection(self):
         self.ssh_singleton.connect(self.remote_host, self.remote_user, password=self.remote_password, private_key_path=self.private_key_path)
 
@@ -151,8 +171,9 @@ class MySQLDatabase:
             self.execute_ssh_command(command)
             #删除临时文件
             # 删除远程服务器上的临时文件，需要 sudo 权限
-            delete_command = f"sudo rm {remote_sql_path}"
-            self.execute_ssh_command(delete_command)
+            sleep(5)
+            # delete_command = f"sudo rm {remote_sql_path}"
+            # self.execute_ssh_command(delete_command)
             logging.info(f"Database '{database_name}' imported successfully from remote SQL file.")
         except Exception as e:
             logging.error(f"Error occurred while importing the database from remote: {e}")
@@ -512,25 +533,37 @@ if __name__ == "__main__":
     # mysqlhost = "127.0.0.1"
     mysqlhost = "47.103.135.26"
     mysqlport = 3306
-    #远程连接参数
-    location_type = "remote"
-    
-    remote_host = "47.103.135.26"
-    remote_user = "zym"
-    
-    #密钥和密码二选一
-    # remote_password = "alyfwqok"
-    private_key_path = "/home/zym/.ssh/new_key"
-    
-    #mydwL和mysqldump命令的绝对路径    
-    local_mysql_path = "/home/zym/anaconda3/bin/mysql"
-    local_mysqldump_path = "/home/zym/anaconda3/bin/mysqldump"
-    remote_mysql_path = "/home/zym/anaconda3/bin/mysql"
-    remote_mysqldump_path = "/home/zym/anaconda3/bin/mysqldump"
+    # MySQL 和 mysqldump 命令的绝对路径，以便对数据库进行导入和导出操作
+    local_mysql_path = '/home/zym/anaconda3/bin/mysql'
+    local_mysqldump_path = '/home/zym/anaconda3/bin/mysqldump'
+    remote_mysql_path = '/home/zym/anaconda3/bin/mysql'
+    remote_mysqldump_path = '/home/zym/anaconda3/bin/mysqldump'
+              
+    # 要连接的数据库容器是否开启
+    container_is_up = False
+    # 以下只有容器不存在的情况下才需要传入参数
+    #定义要创建的容器是本地还是远程    
+    location_type = 'remote'    
+    #定义创建容器的yaml文件及其相关文件的地址
+    local_path = '/home/zym/container/config/'
+    remote_path = '/home/zym/container'
+    #定义要创建的服务（容器）
+    servicie_name = ["p0_s_mysql_master_1","p0_s_mysql_slave_1"]
+    # 定义远程连接时所需要的主机地址，用户名和密钥或密码
+    remote_host = '47.103.135.26'
+    remote_user = 'zym'
+    private_key_path = '/home/zym/.ssh/new_key'
+    remote_password = "alyfwqok"
+    #定义创建远程容器的尝试次数和时间
+    max_attempts = 10
+    sleep_time = 5
+
     
     db = MySQLDatabase(mysqlusername=mysqlusername, mysqlpassword=mysqlpassword, mysqlhost=mysqlhost, mysqlport=mysqlport,
-                       location_type='remote',
-                       remote_host=remote_host,remote_user=remote_user,private_key_path=private_key_path,
+                       location_type=location_type,
+                       container_is_up=container_is_up,
+                       local_path=local_path,remote_path=remote_path,service_name=servicie_name,
+                       remote_host=remote_host,remote_user=remote_user,private_key_path=private_key_path,remote_password=remote_password,max_attempts=max_attempts,sleep_time=sleep_time,
                        local_mysql_path=local_mysql_path,local_mysqldump_path=local_mysqldump_path, remote_mysql_path=remote_mysql_path,remote_mysqldump_path=remote_mysqldump_path)  
     try:       
         # db.create_database("example_database", charset='utf8', collation='utf8_unicode_ci')
