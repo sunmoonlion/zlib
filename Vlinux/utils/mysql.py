@@ -7,7 +7,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from file import FileTransfer, SSHSingleton
 
-
+# 本数据库导入时，如果不想导入特定的数据库或表，那么就可以用iimport_all_databases_from_sql_file或export_all_databases_from_sql_file把所有的数据库导入导出（数据库文件中要有创建数据库的mysql语句）
+# 只有想导入导出特定的数据库，才考虑用import_database,export_database（要指定数据库，导入的数据库文件要包含创建数据库的mysql语句）,import_table.export_tabl（要使用指定的数据库，要包含指定的表，数据库文件中要有表创建mysql语句）函数
 class MySQLDatabase:
     def __init__(self, mysqlusername, mysqlpassword, mysqlhost='127.0.0.1', mysqlport=3306,
                  location_type='local',
@@ -148,6 +149,10 @@ class MySQLDatabase:
             remote_sql_path = f"/tmp/{os.path.basename(sql_file_path)}"
             command = f"{self.remote_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h 127.0.0.1 --port={self.mysqlport} {database_name} < {remote_sql_path}"
             self.execute_ssh_command(command)
+            #删除临时文件
+            # 删除远程服务器上的临时文件，需要 sudo 权限
+            delete_command = f"sudo rm {remote_sql_path}"
+            self.execute_ssh_command(delete_command)
             logging.info(f"Database '{database_name}' imported successfully from remote SQL file.")
         except Exception as e:
             logging.error(f"Error occurred while importing the database from remote: {e}")
@@ -511,11 +516,11 @@ if __name__ == "__main__":
     location_type = "remote"
     
     remote_host = "47.103.135.26"
-    remote_user = "root"
+    remote_user = "zym"
     
     #密钥和密码二选一
     # remote_password = "alyfwqok"
-    private_key_path = "/home/zym/.ssh/id_rsa"
+    private_key_path = "/home/zym/.ssh/new_key"
     
     #mydwL和mysqldump命令的绝对路径    
     local_mysql_path = "/home/zym/anaconda3/bin/mysql"
