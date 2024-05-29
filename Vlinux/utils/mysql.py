@@ -273,8 +273,10 @@ class MySQLDatabase:
        
     def import_table_remote(self, database_name, table_name, sql_file_path):
         try:
+            #sq_file_path提供的是数据库文件，它既可以在远程，也可以在本地提供
             command = f"if [ -f {sql_file_path} ]; then echo 'true'; else echo 'false'; fi"
             _, stdout, stderr = self.execute_ssh_command(command)
+            #数据库文件在远程
             if stdout.strip() == 'true':
                 logging.info(f"Importing existing remote SQL file: {sql_file_path} to table: {table_name} in database: {database_name}")
                 # 提取指定表的SQL语句
@@ -292,6 +294,7 @@ class MySQLDatabase:
                 logging.info(f"Table '{table_name}' imported successfully to remote server.")
             else:
                 logging.info(f"SQL file: {sql_file_path} does not exist remotely, uploading from local.")
+                #提供的数据库文件在本地，所以要上传到远程
                 transfer = self.get_transfer()
                 transfer.upload(sql_file_path, sql_file_path)
 

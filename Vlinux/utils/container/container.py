@@ -430,6 +430,7 @@ if __name__ == "__main__":
     location_type = 'remote'    
     #定义创建容器的yaml文件及其相关文件的地址
     local_path = '/home/zym/container/config/'
+    #远程路径中可以有yaml文件，也可以没有，如果没有，那么，它必须是个文件夹
     remote_path = '/home/zym/container'
     
    # 定义单个服务名称
