@@ -161,23 +161,36 @@ class MySQLDatabase:
             raise
 
     def import_database_remote(self, database_name, sql_file_path):
-        try:
-            transfer = self.get_transfer()         
-            # 上传时，远程要求时文件夹
-            transfer.upload(sql_file_path, "/tmp/")
-            # 导入时要求时文件下的数据文件
-            remote_sql_path = f"/tmp/{os.path.basename(sql_file_path)}"
-            command = f"{self.remote_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h 127.0.0.1 --port={self.mysqlport} {database_name} < {remote_sql_path}"
-            self.execute_ssh_command(command)
-            #删除临时文件
-            # 删除远程服务器上的临时文件，需要 sudo 权限
-            sleep(5)
-            # delete_command = f"sudo rm {remote_sql_path}"
-            # self.execute_ssh_command(delete_command)
-            logging.info(f"Database '{database_name}' imported successfully from remote SQL file.")
-        except Exception as e:
-            logging.error(f"Error occurred while importing the database from remote: {e}")
-            raise
+        attempt = 0
+        while attempt < self.max_attempts:
+            try:
+                transfer = self.get_transfer()
+                # 上传时，远程要求是文件夹
+                transfer.upload(sql_file_path, "/tmp/")
+                # 导入时要求是文件下的数据文件
+                remote_sql_path = f"/tmp/{os.path.basename(sql_file_path)}"
+                command = f"{self.remote_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h 127.0.0.1 --port={self.mysqlport} {database_name} < {remote_sql_path}"
+                stin, stout, error = self.execute_ssh_command(command)
+                
+                # 检查 error 变量
+                if error and "error" in error.lower():
+                    raise Exception(error)
+                
+                # 删除临时文件
+                delete_command = f"sudo rm {remote_sql_path}"
+                self.execute_ssh_command(delete_command)
+                logging.info(f"Database '{database_name}' imported successfully from remote SQL file.")
+                break
+            except Exception as e:
+                attempt += 1
+                logging.error(f"Error occurred while importing the database from remote: {e}")
+                if attempt < self.max_attempts:
+                    logging.info(f"Retrying... ({attempt}/{self.max_attempts})")
+                    sleep(self.sleep_time)
+                else:
+                    logging.error("Max retries reached. Failed to import database.")
+                    raise
+
     
     def export_database(self, database_name, sql_file_path):
         if self.location_type == 'local':
@@ -587,7 +600,4 @@ if __name__ == "__main__":
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")
-
-    # finally:
-    #     db.close_connection()
 
