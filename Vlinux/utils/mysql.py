@@ -141,7 +141,7 @@ class MySQLDatabase:
             logging.error(f"Error occurred while deleting the table: {e}")
             raise
 
-
+    # 如果指定某库，那么，sql_file_path文件中的所有库和表都会被导入
     def import_database(self, database_name, sql_file_path):
         if self.location_type == 'local':
             self.import_database_local(database_name, sql_file_path)
@@ -191,39 +191,7 @@ class MySQLDatabase:
                     logging.error("Max retries reached. Failed to import database.")
                     raise
 
-    
-    def export_database(self, database_name, sql_file_path):
-        if self.location_type == 'local':
-            self.export_database_local(database_name, sql_file_path)
-        elif self.location_type == 'remote':
-            self.export_database_remote(database_name, sql_file_path)
-        else:
-            logging.error(f"Invalid location_type: {self.location_type}")
-    
-    def export_database_local(self, database_name, sql_file_path):
-        try:
-            command = f"{self.local_mysqldump_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h {self.mysqlhost} --port={self.mysqlport} {database_name} > {sql_file_path}"
-            subprocess.run(command, shell=True, check=True)
-            logging.info(f"Database '{database_name}' exported successfully.")
-        except Exception as e:
-            logging.error(f"Error occurred while exporting the database: {e}")
-            raise
-     
-    def export_database_remote(self, database_name, sql_file_path):
-        try:
-            # 在远程服务器上执行导出命令
-            remote_sql_file_path = os.path.join('/tmp', os.path.basename(sql_file_path))
-            command = f"{self.remote_mysqldump_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h {self.mysqlhost} --port={self.mysqlport} {database_name} > {remote_sql_file_path}"
-            self.execute_ssh_command(command)
-
-            # 下载SQL文件到本地
-            transfer = self.get_transfer()
-            transfer.download(remote_sql_file_path, sql_file_path)
-            logging.info(f"Database '{database_name}' exported successfully from remote server.")
-        except Exception as e:
-            logging.error(f"Error occurred while exporting the database from remote server: {e}")
-            raise
-     
+    # 如果指定库，还指定表，那么，必须解析sql_file_path文件提取指定的库和指定表的语句，再执行导入操作
     def import_table(self, database_name, table_name, sql_file_path):
         if self.location_type == 'local':
             self.import_table_local(database_name, table_name, sql_file_path)
@@ -315,6 +283,40 @@ class MySQLDatabase:
             logging.error(f"Error occurred while importing the table to remote server: {e}")
             raise
            
+    
+    def export_database(self, database_name, sql_file_path):
+        if self.location_type == 'local':
+            self.export_database_local(database_name, sql_file_path)
+        elif self.location_type == 'remote':
+            self.export_database_remote(database_name, sql_file_path)
+        else:
+            logging.error(f"Invalid location_type: {self.location_type}")
+    # 导入指定库
+    def export_database_local(self, database_name, sql_file_path):
+        try:
+            command = f"{self.local_mysqldump_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h {self.mysqlhost} --port={self.mysqlport} {database_name} > {sql_file_path}"
+            subprocess.run(command, shell=True, check=True)
+            logging.info(f"Database '{database_name}' exported successfully.")
+        except Exception as e:
+            logging.error(f"Error occurred while exporting the database: {e}")
+            raise
+     
+    def export_database_remote(self, database_name, sql_file_path):
+        try:
+            # 在远程服务器上执行导出命令
+            remote_sql_file_path = os.path.join('/tmp', os.path.basename(sql_file_path))
+            command = f"{self.remote_mysqldump_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h {self.mysqlhost} --port={self.mysqlport} {database_name} > {remote_sql_file_path}"
+            self.execute_ssh_command(command)
+
+            # 下载SQL文件到本地
+            transfer = self.get_transfer()
+            transfer.download(remote_sql_file_path, sql_file_path)
+            logging.info(f"Database '{database_name}' exported successfully from remote server.")
+        except Exception as e:
+            logging.error(f"Error occurred while exporting the database from remote server: {e}")
+            raise
+         
+    # 导入指定表，不同于导入，他可以直接在命令行指定要导入的表
     def export_table(self, database_name, table_name, sql_file_path):
         if self.location_type == 'local':
             self.export_table_local(database_name, table_name, sql_file_path)
@@ -346,146 +348,86 @@ class MySQLDatabase:
         except Exception as e:
             logging.error(f"Error occurred while exporting the table from remote server: {e}")
             raise
-
-    def import_all_databases_from_sql_file(self, sql_file_path):
-        if self.location_type == 'local':
-            self.import_all_databases_from_sql_file_local(sql_file_path)
-        elif self.location_type == 'remote':
-            self.import_all_databases_from_sql_file_remote(sql_file_path)
-        else:
-            logging.error(f"Invalid location_type: {self.location_type}")
-
-    def import_all_databases_from_sql_file_local(self, sql_file_path):
-        try:
-            with open(sql_file_path, 'r', encoding='utf-8') as file:
-                sql_content = file.read()
-
-            database_names = re.findall(r'CREATE DATABASE IF NOT EXISTS `([^`]+)`;', sql_content)
-
-            for db_name in database_names:
-                db_sql_path = f"{os.path.splitext(sql_file_path)[0]}_{db_name}.sql"
-                
-                with open(db_sql_path, 'w', encoding='utf-8') as db_file:
-                    db_file.write(f"USE `{db_name}`;\n")
-                    match = re.search(f'CREATE DATABASE IF NOT EXISTS `{db_name}`;.*?USE `{db_name}`;(.*?)-- Dumping', sql_content, re.DOTALL)
-                    if match:
-                        db_file.write(match.group(1))
-
-                self.delete_database(db_name)
-                self.import_database_local(db_name, db_sql_path)
-                os.remove(db_sql_path)
-
-            logging.info("All databases imported successfully.")
-        except Exception as e:
-            logging.error(f"Error occurred while importing all databases from SQL file: {e}")
-            raise
-
-    def import_all_databases_from_sql_file_remote(self, sql_file_path):
-        try:
-            with open(sql_file_path, 'r', encoding='utf-8') as file:
-                sql_content = file.read()
-
-            database_names = re.findall(r'CREATE DATABASE IF NOT EXISTS `([^`]+)`;', sql_content)
-
-            for db_name in database_names:
-                db_sql_path = f"{os.path.splitext(sql_file_path)[0]}_{db_name}.sql"
-                
-                with open(db_sql_path, 'w', encoding='utf-8') as db_file:
-                    db_file.write(f"USE `{db_name}`;\n")
-                    match = re.search(f'CREATE DATABASE IF NOT EXISTS `{db_name}`;.*?USE `{db_name}`;(.*?)-- Dumping', sql_content, re.DOTALL)
-                    if match:
-                        db_file.write(match.group(1))
-
-                self.delete_database(db_name)
-                self.import_database_remote(db_name, db_sql_path)
-                os.remove(db_sql_path)
-
-            logging.info("All databases imported successfully.")
-        except Exception as e:
-            logging.error(f"Error occurred while importing all databases from SQL file: {e}")
-            raise
         
-    #把所有的数据库都导出到一个目录下，该目录下的一个文件对应一个数据库
-    def export_all_databases_to_sql_directory(self, output_directory):
+    # 导出所有库和表到本地一个sql文件
+    def export_all_databases_to_sql_file(self, sql_file_path):
         try:
-            databases = self.get_all_databases()
             if self.location_type == 'local':
-                for database in databases:
-                    sql_file_path = os.path.join(output_directory, f"{database}.sql")
-                    self.export_database_local(database, sql_file_path)
+                try:
+                    command = (f"{self.local_mysqldump_path} -u {self.mysqlusername} "
+                           f"-p{self.mysqlpassword} -h 127.0.0.1 "
+                           f"--port={self.mysqlport} --add-drop-database --databases --all-databases > {sql_file_path}")
+                    subprocess.run(command, shell=True, check=True)
+                    logging.info(f"all-databases imported successfully.")
+                except Exception as e:
+                    logging.error(f"Error occurred while importing the all-databases: {e}")
+                    raise
             elif self.location_type == 'remote':
-                for database in databases:
-                    sql_file_path = os.path.join(output_directory, f"{database}.sql")
-                    self.export_database_remote(database, sql_file_path)
+                try:
+                    # 在远程服务器上执行导出命令
+                    remote_sql_file_path = os.path.join('/tmp', os.path.basename(sql_file_path))
+                    remote_command = (f"{self.remote_mysqldump_path} -u {self.mysqlusername} "
+                                  f"-p{self.mysqlpassword} -h 127.0.0.1 "
+                                  f"--port={self.mysqlport} --add-drop-database --databases --all-databases > {remote_sql_file_path}'")
+                    self.execute_ssh_command(remote_command)
+
+                    # 下载SQL文件到本地
+                    transfer = self.get_transfer()
+                    transfer.download(remote_sql_file_path, sql_file_path)
+                    logging.info(f"all-database exported successfully from remote server.")
+                except Exception as e:
+                    logging.error(f"Error occurred while exporting the database from remote server: {e}")
+                    raise
             else:
                 logging.error(f"Invalid location_type: {self.location_type}")
-            logging.info("All databases exported successfully.")
-        except Exception as e:
-            logging.error(f"Error occurred while exporting all databases: {e}")
-            raise
-    #把所有的数据库都导出到同一个文件中   
-    def export_all_databases_to_sql_file(self, output_file_path):
-        try:
-            databases = self.get_all_databases()
-            
-            # 打开输出文件
-            with open(output_file_path, 'w') as outfile:
-                # 处理本地数据库
-                if self.location_type == 'local':
-                    for database in databases:
-                        outfile.write(f"-- Database: {database}\n\n")
-                        command = (f"{self.local_mysqldump_path} -u {self.mysqlusername} "
-                                f"-p{self.mysqlpassword} -h {self.mysqlhost} "
-                                f"--port={self.mysqlport} {database}")
-                        
-                        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-                        
-                        if result.returncode == 0:
-                            outfile.write(result.stdout)
-                            outfile.write("\n\n")
-                        else:
-                            logging.error(f"Error occurred while exporting database {database}: {result.stderr}")
-                
-                # 处理远程数据库
-                elif self.location_type == 'remote':
-                    for database in databases:
-                        outfile.write(f"-- Database: {database}\n\n")
-                        remote_sql_file_path = f"/tmp/{database}.sql"
-                        command = (f"{self.remote_mysqldump_path} -u {self.mysqlusername} "
-                                f"-p{self.mysqlpassword} -h {self.mysqlhost} "
-                                f"--port={self.mysqlport} {database} > {remote_sql_file_path}")
-                        
-                        self.execute_ssh_command(command)
-                        
-                        transfer = self.get_transfer()
-                        local_temp_path = os.path.join('/tmp', f"{database}.sql")
-                        transfer.download(remote_sql_file_path, local_temp_path)
-                        
-                        with open(local_temp_path, 'r') as temp_file:
-                            outfile.write(temp_file.read())
-                            outfile.write("\n\n")
-                        
-                        os.remove(local_temp_path)
-                else:
-                    logging.error(f"Invalid location_type: {self.location_type}")
-            
-            logging.info("All databases exported successfully to a single file.")
+                return    
         
         except Exception as e:
             logging.error(f"Error occurred while exporting all databases: {e}")
             raise
-
-
-    def get_all_databases(self):
+        
+    # 导入sql文件中的所有库和表到数据库容器中  
+    def import_all_databases_from_sql_file(self, sql_file_path):
         try:
-            with self.engine.connect() as conn:
-                result = conn.execute(text("SHOW DATABASES"))
-                databases = [row[0] for row in result]
-                return databases
-        except SQLAlchemyError as e:
-            logging.err+r(f"An error occurred while retrieving all databases: {e}")
+            if self.location_type == 'local':
+                command = f"{self.local_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h 127.0.0.1 --port={self.mysqlport} < {sql_file_path}"
+            elif self.location_type == 'remote':
+                attempt = 0
+                while attempt < self.max_attempts:
+                    try:
+                        transfer = self.get_transfer()
+                        # 上传时，远程要求是文件夹
+                        transfer.upload(sql_file_path, "/tmp/")
+                        # 导入时要求是文件下的数据文件
+                        remote_sql_path = f"/tmp/{os.path.basename(sql_file_path)}"
+                        remote_command = f"{self.remote_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h 127.0.0.1 --port={self.mysqlport} < {remote_sql_path}'"
+                        stin, stout, error = self.execute_ssh_command(remote_command)
+                        
+                        # 检查 error 变量
+                        if error and "error" in error.lower():
+                            raise Exception(error)
+                        
+                        # 删除临时文件
+                        delete_command = f"sudo rm {remote_sql_path}"
+                        self.execute_ssh_command(delete_command)
+                        logging.info(f"all-database imported successfully from remote SQL file.")
+                        break
+                    except Exception as e:
+                        attempt += 1
+                        logging.error(f"Error occurred while importing the database from remote: {e}")
+                        if attempt < self.max_attempts:
+                            logging.info(f"Retrying... ({attempt}/{self.max_attempts})")
+                            sleep(self.sleep_time)
+                        else:
+                            logging.error("Max retries reached. Failed to import database.")
+                            raise
+            else:
+                logging.error(f"Invalid location_type: {self.location_type}")
+                return
+        
+        except Exception as e:
+            logging.error(f"Error occurred while importing all databases from SQL file: {e}")
             raise
-    
     
     def export_table_to_dataframe(self, database_name, table_name=None, query=None):
         try:
@@ -544,7 +486,7 @@ class MySQLDatabase:
            
 if __name__ == "__main__":
     #数据库连接参数
-    mysqlusername = "mydb"
+    mysqlusername = "zym"
     mysqlpassword="123456"
     # mysqlhost = "127.0.0.1"
     mysqlhost = "47.103.135.26"
@@ -593,7 +535,7 @@ if __name__ == "__main__":
         # db.select_data(database_name="example_database", table_name="example_table")
         # db.export_database(database_name="example_database", sql_file_path="example_database.sql")
         # db.import_database(database_name="meiduo_mall", sql_file_path=r"C:\Users\zym\Desktop\web_meiduo_mall_docker\backend\mysql\master_db2.sql")  
-        db.import_database('mydream',"/home/zym/web_meiduo_mall_docker/backend/mysql/master_db2.sql")
+        db.import_database('mydb',"/home/zym/web_meiduo_mall_docker/backend/mysql/master_db2.sql")
         # df = db.import_table_to_dataframe(database_name="example_database", table_name="example_table")
         # db.export_dataframe_to_table(dataframe=df, database_name="example_database", table_name="new_table")
         # db.delete_table(database_name="example_database", table_name="example_table")

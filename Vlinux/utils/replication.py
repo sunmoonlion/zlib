@@ -100,7 +100,7 @@ class MySQLReplication:
     def import_data_from_master_to_db_slave(self):
         
         try:
-            self.db_master.export_all_databases_to_sql_file('/tmp/dump_replication.sql')
+            self.db_master.export_all_databases_to_sql_file('/tmp/dump_replication.sql')          
             print("Data exported from master successfully.")     
         except Exception as e:
             print(f"Failed to export data from master: {e}")
@@ -184,9 +184,9 @@ class MySQLReplication:
 
 if __name__ == "__main__":
     # 定义主从数据库的连接参数，包括主从数据库的用户名和密码
-        user_master = 'mydb'
+        user_master = 'zym'
         password_master = '123456'
-        user_slave = 'mydb'
+        user_slave = 'zym'
         password_slave = '123456'
         # 定义主从数据库的连接参数，包括主从数据库的主机地址和端口
         db_master_host = '47.103.135.26'
@@ -229,7 +229,8 @@ if __name__ == "__main__":
         replication = MySQLReplication(user_master=user_master, password_master=password_master, user_slave=user_slave, password_slave=password_slave,
                                    local_path=local_path, remote_path=remote_path, service_name_master=service_name_master, service_name_slave=service_name_slave, 
                                    remote_host=remote_host,remote_user=remote_user,remote_password=remote_password,private_key_path=private_key_path,
-                                   container_master_exist=container_is_up_master, container_slave_exist=container_is_up_slave,
+                                   container_is_up_master=container_is_up_master, container_is_up_slave=container_is_up_slave,
                                    db_master_host=db_master_host, db_master_port=db_master_port, db_slave_host=db_slave_host,db_slave_port=db_slave_port,
-                                   repl_user=repl_user, repl_password=repl_password)
+                                   repl_user=repl_user, repl_password=repl_password,local_mysql_path=local_mysql_path, 
+                                   local_mysqldump_path=local_mysqldump_path,remote_mysql_path=local_mysqldump_path, remote_mysqldump_path=remote_mysqldump_path)
         replication.main()
