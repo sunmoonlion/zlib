@@ -490,7 +490,7 @@ if __name__ == "__main__":
     mysqlpassword="123456"
     # mysqlhost = "127.0.0.1"
     mysqlhost = "47.103.135.26"
-    mysqlport = 3306
+    mysqlport = 3300
     # MySQL 和 mysqldump 命令的绝对路径，以便对数据库进行导入和导出操作
     local_mysql_path = '/home/zym/anaconda3/bin/mysql'
     local_mysqldump_path = '/home/zym/anaconda3/bin/mysqldump'
@@ -503,8 +503,8 @@ if __name__ == "__main__":
     #定义要创建的容器是本地还是远程    
     location_type = 'remote'    
     #定义创建容器的yaml文件及其相关文件的地址
-    local_path = '/home/zym/container/config/'
-    remote_path = '/home/zym/container'
+    local_path = '/home/zym/container/'
+    remote_path = '/home/zym/'
     #定义要创建的服务（容器）
     servicie_name = ["p0_s_mysql_master_1","p0_s_mysql_slave_1"]
     # 定义远程连接时所需要的主机地址，用户名和密钥或密码

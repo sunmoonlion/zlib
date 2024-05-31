@@ -429,9 +429,9 @@ if __name__ == "__main__":
     #定义要创建的容器是本地还是远程    
     location_type = 'remote'    
     #定义创建容器的yaml文件及其相关文件的地址
-    local_path = '/home/zym/container/config/'
+    local_path = '/home/zym/container/'
     #远程路径中可以有yaml文件，也可以没有，如果没有，那么，它必须是个文件夹
-    remote_path = '/home/zym/container'
+    remote_path = '/home/zym/'
     
    # 定义单个服务名称
     # service_name_single = "p0_s_mysql_master_1"
@@ -448,6 +448,17 @@ if __name__ == "__main__":
     max_attempts = 10
     sleep_time = 5
     
+    # #创建远程实例并启动批量服务 用ssh密钥连接
+    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+    #                             remote_host=remote_host, remote_user=remote_user,location_type='remote',
+    #                             private_key_path=private_key_path)      
+    # db_remote_batch.up_services()
+    
+    # #创建远程实例并移除批量服务(而且移除相关数据卷) 用ssh密钥连接
+    db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
+                                remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path,
+                                location_type='remote')
+    db_remote_batch.down_services(remove_volumes=True)
     
     
     # # 创建本地实例并启动单个服务
@@ -476,14 +487,8 @@ if __name__ == "__main__":
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
     #                             location_type='remote')
-    # db_remote_batch.up_services()
+    # db_remote_batch.up_services()    
     
-#     #创建远程实例并启动批量服务 用ssh密钥连接
-#     db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
-#                                 remote_host=remote_host, remote_user=remote_user,location_type='remote',
-#                                 private_key_path=private_key_path)      
-#     db_remote_batch.up_services()
-# # 
     # # 创建不指定服务名称的本地实例以启动所有服务
     # db_local_all = Container(local_path=local_path, remote_path=remote_path)
     # db_local_all.up_services()
@@ -542,11 +547,11 @@ if __name__ == "__main__":
     #                                   location_type='remote')
     # db_remote_single.down_services(remove_volumes=True)
     
-    # 创建远程实例并移除单个服务(而且移除相关数据卷)用ssh连接
-    db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
-                                      remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path,
-                                      location_type='remote')
-    db_remote_single.down_services(remove_volumes=True)
+    # # 创建远程实例并移除单个服务(而且移除相关数据卷)用ssh连接
+    # db_remote_single = Container(local_path=local_path, remote_path=remote_path,service_name=service_name_single,
+    #                                   remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path,
+    #                                   location_type='remote')
+    # db_remote_single.down_services(remove_volumes=True)
 
     # #创建本地实例并移除批量服务(而且移除相关数据卷)
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
@@ -558,18 +563,14 @@ if __name__ == "__main__":
     #                             remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path)
     # db_remote_batch.down_services(remove_volumes=True)
     
-    # # #创建远程实例并移除批量服务(而且移除相关数据卷) 用ssh密钥连接
-    # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
-    #                             remote_host=remote_host, remote_user=remote_user, private_key_path=private_key_path,
-    #                             location_type='remote')
-    # db_remote_batch.down_services(remove_volumes=True)
-    
+        
     # # #创建远程实例并移除批量服务(而且移除相关数据卷)
     # db_remote_batch = Container(local_path=local_path, remote_path=remote_path, service_name=service_names_batch,
     #                             remote_host=remote_host, remote_user=remote_user, remote_password=remote_password,
     #                             location_type='remote')
     # db_remote_batch.down_services(remove_volumes=True)
-
+   
+    
     # # 创建不指定服务名称的本地实例以移除所有服务(而且移除相关数据卷)
     # db_local_all = Container(local_path=local_path, remote_path=remote_path)
     # db_local_all.down_services(remove_volumes=True)

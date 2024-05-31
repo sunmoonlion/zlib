@@ -190,9 +190,9 @@ if __name__ == "__main__":
         password_slave = '123456'
         # 定义主从数据库的连接参数，包括主从数据库的主机地址和端口
         db_master_host = '47.103.135.26'
-        db_master_port = 3306
+        db_master_port = 3300
         db_slave_host = '47.103.135.26'
-        db_slave_port = 3307
+        db_slave_port = 8300
         
         # 定义主从数据库的复制用户和密码
         repl_user = 'repl_user'
