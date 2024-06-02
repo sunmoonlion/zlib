@@ -65,28 +65,52 @@ class MySQLReplication:
         self.remote_mysql_path = remote_mysql_path
         self.remote_mysqldump_path = remote_mysqldump_path
         
-        self.db_master = self.get_db_master()
-        self.db_slave = self.get_db_slave()  
-
-    def get_db_master(self):
+        self.db_master = self.get_db_master()        
+        self.db_slave = self.get_db_slave()
         
-        return MySQLDatabase(self.user_master, self.password_master,  self.db_master_host,self.db_master_port, self.container_is_up_master,
-                             self.location_type, self.service_name_master,self.remote_host, self.remote_user, self.private_key_path,self.remote_password,self.max_attempts,self.sleep_time,
-                             self.local_mysql_path, self.local_mysqldump_path, self.remote_mysql_path, self.remote_mysqldump_path
+      
+
+    
+    
+    def get_db_master(self):
+        return MySQLDatabase(self.user_master, self.password_master,  self.db_master_host,self.db_master_port, container_is_up=self.container_is_up_master,
+                             location_type=self.location_type, service_name=self.service_name_master,remote_host=self.remote_host, remote_user=self.remote_user, 
+                             private_key_path=self.private_key_path,remote_password=self.remote_password,max_attempts=self.max_attempts, sleep_time=self.sleep_time,
+                             local_mysql_path=self.local_mysql_path, local_mysqldump_path=self.local_mysqldump_path,
+                             remote_mysql_path=self.remote_mysql_path, remote_mysqldump_path=self.remote_mysqldump_path
                              )
 
     def get_db_slave(self):
-        return MySQLDatabase(self.user_slave, self.password_slave,  self.db_slave_host,self.db_slave_port, self.container_is_up_slave,
-                             self.location_type, self.service_name_slave,self.remote_host, self.remote_user, self.private_key_path,self.remote_password,self.max_attempts,self.sleep_time,
-                             self.local_mysql_path, self.local_mysqldump_path, self.remote_mysql_path, self.remote_mysqldump_path
-                             )
+        return MySQLDatabase(self.user_slave, self.password_slave,  self.db_slave_host,self.db_slave_port, container_is_up=self.container_is_up_slave,
+                             location_type=self.location_type, service_name=self.service_name_master,remote_host=self.remote_host, remote_user=self.remote_user, 
+                             private_key_path=self.private_key_path,remote_password=self.remote_password,max_attempts=self.max_attempts, sleep_time=self.sleep_time,
+                             local_mysql_path=self.local_mysql_path, local_mysqldump_path=self.local_mysqldump_path,
+                             remote_mysql_path=self.remote_mysql_path, remote_mysqldump_path=self.remote_mysqldump_path)
 
     def get_master_status(self):
         query = "SHOW MASTER STATUS;"
         
+        # # 使用下面的sqlalchemy连接查询会报错
+        # try:
+        #     with self.db_master.engine.connect() as conn:
+        #         result = conn.execute(query).fetchone()
+        #     if result:
+        #         binlog_file = result[0]  # 根据实际返回的字段顺序来提取
+        #         binlog_position = result[1]  # 根据实际返回的字段顺序来提取
+        #         print("Master status retrieved successfully.")
+        #         return binlog_file, binlog_position
+        # except Exception as e:
+        #     print(f"Failed to get master status: {e}")
+        # return None, None
         try:
-            with self.db_master.engine.connect() as conn:
-                result = conn.execute(query).fetchone()
+            # 使用 pymysql 直接执行查询
+            connection = pymysql.connect(host=self.db_master_host,
+                                         user=self.user_master,
+                                         password=self.password_master,
+                                         port=self.db_master_port)
+            with connection.cursor() as cursor:
+                cursor.execute(query)
+                result = cursor.fetchone()
             if result:
                 binlog_file = result[0]  # 根据实际返回的字段顺序来提取
                 binlog_position = result[1]  # 根据实际返回的字段顺序来提取
@@ -94,10 +118,12 @@ class MySQLReplication:
                 return binlog_file, binlog_position
         except Exception as e:
             print(f"Failed to get master status: {e}")
+        finally:
+            connection.close()
         return None, None
 
 
-    def import_data_from_master_to_db_slave(self):
+    def import_data_from_db_master_to_db_slave(self):
         
         try:
             self.db_master.export_all_databases_to_sql_file('/tmp/dump_replication.sql')          
@@ -171,7 +197,7 @@ class MySQLReplication:
     def main(self):
         try:
             self.db_master.create_user_and_grant_privileges(self.repl_user, self.repl_password, pri_database='*', pri_table='*', pri_host='%')
-            self.import_data_from_master_to_db_slave()
+            self.import_data_from_db_master_to_db_slave()
             binlog_file, binlog_position = self.get_master_status()            
             if binlog_file and binlog_position:
                 self.configure_replication(binlog_file, binlog_position)
@@ -207,12 +233,12 @@ if __name__ == "__main__":
         location_type = 'remote'        
         # 定义创建容器的初始化参数
         #定义创建容器的yaml文件及其相关文件的地址
-        local_path = '/home/zym/container/config'
-        remote_path = '/home/zym/container'
+        local_path = '/home/zym/container/'
+        remote_path = '/home/zym/'
         #定义如果远程创建容器，则需提供远程主机地址，用户名和密钥或密码
         remote_host = '47.103.135.26'
         remote_user = 'zym'
-        private_key_path = '/home/zym/.sssh/new_key'
+        private_key_path = '/home/zym/.ssh/new_key'
         remote_password = "alyfwqok"
         # 定义主从服务名称，以分别创建主从容器
         service_name_master = 'p0_s_mysql_master_1'
@@ -229,8 +255,8 @@ if __name__ == "__main__":
         replication = MySQLReplication(user_master=user_master, password_master=password_master, user_slave=user_slave, password_slave=password_slave,
                                    local_path=local_path, remote_path=remote_path, service_name_master=service_name_master, service_name_slave=service_name_slave, 
                                    remote_host=remote_host,remote_user=remote_user,remote_password=remote_password,private_key_path=private_key_path,
-                                   container_is_up_master=container_is_up_master, container_is_up_slave=container_is_up_slave,
+                                   container_is_up_master=container_is_up_master, container_is_up_slave=container_is_up_slave,location_type=location_type,
                                    db_master_host=db_master_host, db_master_port=db_master_port, db_slave_host=db_slave_host,db_slave_port=db_slave_port,
                                    repl_user=repl_user, repl_password=repl_password,local_mysql_path=local_mysql_path, 
-                                   local_mysqldump_path=local_mysqldump_path,remote_mysql_path=local_mysqldump_path, remote_mysqldump_path=remote_mysqldump_path)
+                                   local_mysqldump_path=local_mysqldump_path,remote_mysql_path=remote_mysql_path, remote_mysqldump_path=remote_mysqldump_path)
         replication.main()

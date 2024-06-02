@@ -52,10 +52,9 @@ class MySQLDatabase:
         # 定义SSH单例对象
         self.ssh_singleton = SSHSingleton()
         
-        self.up_container()
+        self.up_container()        
         
-        
-        try:
+        try:            
             self.engine = create_engine(f"mysql+pymysql://{mysqlusername}:{mysqlpassword}@{mysqlhost}:{mysqlport}/")
         except SQLAlchemyError as e:
             logging.error(f"Error occurred while connecting to the database: {e}")
@@ -93,9 +92,18 @@ class MySQLDatabase:
     def create_user_and_grant_privileges(self, new_user, new_user_password, pri_database='*', pri_table='*', pri_host='%'):
         try:
             with self.engine.connect() as conn:
-                conn.execute(text(f"CREATE USER IF NOT EXISTS '{new_user}'@'{pri_host}' IDENTIFIED BY '{new_user_password}'"))
-                conn.execute(text(f"GRANT ALL PRIVILEGES ON {pri_database}.{pri_table} TO '{new_user}'@'{pri_host}'"))
+                # 使用正确的字符串拼接方式，确保 pri_host 中的 '%' 不会被错误处理
+                create_user_sql = f"CREATE USER IF NOT EXISTS '{new_user}'@'{pri_host}' IDENTIFIED BY '{new_user_password}'"
+                grant_privileges_sql = f"GRANT ALL PRIVILEGES ON {pri_database}.{pri_table} TO '{new_user}'@'{pri_host}'"
+                
+                # 打印调试信息
+                print(f"Executing SQL: {create_user_sql}")
+                print(f"Executing SQL: {grant_privileges_sql}")
+
+                conn.execute(text(create_user_sql))
+                conn.execute(text(grant_privileges_sql))
                 conn.execute(text("FLUSH PRIVILEGES"))
+                
             logging.info(f"User '{new_user}' created and granted privileges successfully.")
         except Exception as e:
             logging.error(f"Error occurred while creating the user and granting privileges: {e}")
@@ -169,7 +177,7 @@ class MySQLDatabase:
                 transfer.upload(sql_file_path, "/tmp/")
                 # 导入时要求是文件下的数据文件
                 remote_sql_path = f"/tmp/{os.path.basename(sql_file_path)}"
-                command = f"{self.remote_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h 127.0.0.1 --port={self.mysqlport} {database_name} < {remote_sql_path}"
+                command = f"{self.remote_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h {self.mysqlhost} --port={self.mysqlport} {database_name} < {remote_sql_path}"
                 stin, stout, error = self.execute_ssh_command(command)
                 
                 # 检查 error 变量
@@ -354,9 +362,10 @@ class MySQLDatabase:
         try:
             if self.location_type == 'local':
                 try:
+                    #需要加--ignore-database=mysql参数避免导出系统架构从而避免导入时出现权限错误
                     command = (f"{self.local_mysqldump_path} -u {self.mysqlusername} "
-                           f"-p{self.mysqlpassword} -h 127.0.0.1 "
-                           f"--port={self.mysqlport} --add-drop-database --databases --all-databases > {sql_file_path}")
+                           f"-p{self.mysqlpassword} -h {self.mysqlhost} "
+                           f"--port={self.mysqlport} --add-drop-database --databases --all-databases --ignore-database=mysql > {sql_file_path}")
                     subprocess.run(command, shell=True, check=True)
                     logging.info(f"all-databases imported successfully.")
                 except Exception as e:
@@ -366,14 +375,16 @@ class MySQLDatabase:
                 try:
                     # 在远程服务器上执行导出命令
                     remote_sql_file_path = os.path.join('/tmp', os.path.basename(sql_file_path))
-                    remote_command = (f"{self.remote_mysqldump_path} -u {self.mysqlusername} "
-                                  f"-p{self.mysqlpassword} -h 127.0.0.1 "
-                                  f"--port={self.mysqlport} --add-drop-database --databases --all-databases > {remote_sql_file_path}'")
+                    #需要加--ignore-database=mysql参数避免导出系统架构从而避免导入时出现权限错误
+                    remote_command = (f"{self.remote_mysqldump_path} -u{self.mysqlusername} "
+                                  f"-p{self.mysqlpassword} -h {self.mysqlhost} "
+                                  f"--port={self.mysqlport} --add-drop-database --databases --all-databases --ignore-database=mysql > {remote_sql_file_path}")
                     self.execute_ssh_command(remote_command)
 
                     # 下载SQL文件到本地
                     transfer = self.get_transfer()
-                    transfer.download(remote_sql_file_path, sql_file_path)
+                    print(remote_sql_file_path)
+                    transfer.download(remote_sql_file_path, "/tmp")
                     logging.info(f"all-database exported successfully from remote server.")
                 except Exception as e:
                     logging.error(f"Error occurred while exporting the database from remote server: {e}")
@@ -390,7 +401,7 @@ class MySQLDatabase:
     def import_all_databases_from_sql_file(self, sql_file_path):
         try:
             if self.location_type == 'local':
-                command = f"{self.local_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h 127.0.0.1 --port={self.mysqlport} < {sql_file_path}"
+                command = f"{self.local_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h {self.mysqlhost} --port={self.mysqlport} < {sql_file_path}"
             elif self.location_type == 'remote':
                 attempt = 0
                 while attempt < self.max_attempts:
@@ -400,17 +411,17 @@ class MySQLDatabase:
                         transfer.upload(sql_file_path, "/tmp/")
                         # 导入时要求是文件下的数据文件
                         remote_sql_path = f"/tmp/{os.path.basename(sql_file_path)}"
-                        remote_command = f"{self.remote_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h 127.0.0.1 --port={self.mysqlport} < {remote_sql_path}'"
+                        remote_command = f"{self.remote_mysql_path} -u {self.mysqlusername} -p{self.mysqlpassword} -h {self.mysqlhost} --port={self.mysqlport} < {remote_sql_path}"
                         stin, stout, error = self.execute_ssh_command(remote_command)
                         
                         # 检查 error 变量
                         if error and "error" in error.lower():
                             raise Exception(error)
                         
-                        # 删除临时文件
-                        delete_command = f"sudo rm {remote_sql_path}"
-                        self.execute_ssh_command(delete_command)
-                        logging.info(f"all-database imported successfully from remote SQL file.")
+                        # # 删除临时文件
+                        # delete_command = f"sudo rm {remote_sql_path}"
+                        # self.execute_ssh_command(delete_command)
+                        # logging.info(f"all-database imported successfully from remote SQL file.")
                         break
                     except Exception as e:
                         attempt += 1
