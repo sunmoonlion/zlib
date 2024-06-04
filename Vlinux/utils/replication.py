@@ -1,8 +1,8 @@
-import time
 import yaml
 import pymysql
 import os
 import sys
+from time import sleep
 
 # 获取当前脚本所在的目录
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -15,100 +15,159 @@ from mysql import MySQLDatabase
 from container.container import Container
 
 class MySQLReplication:
-    def __init__(self, user_master=None, password_master=None, user_slave=None, password_slave=None, 
-                 db_master_host='127.0.0.1', db_master_port=3306, db_slave_host='127.0.0.1', repl_user=None, 
-                 repl_password=None, db_slave_port=3307,container_is_up_master=None,container_is_up_slave=None,
-                 location_type='local',local_path=None,remote_path=None, service_name_master=None, service_name_slave=None, remote_host=None,
-                 remote_user=None, remote_password=None, private_key_path=None, max_attempts=10, sleep_time=5,
-                 local_mysql_path=None, local_mysqldump_path=None,remote_mysql_path=None, remote_mysqldump_path=None):
-        
-        # 定义主从数据库的连接参数，包括主从数据库的用户名和密码
-        self.user_master = user_master
-        self.password_master = password_master
-        self.user_slave = user_slave
-        self.password_slave = password_slave
-        # 定义主从数据库的连接参数，包括主从数据库的主机地址和端口
-        self.db_master_host = db_master_host
-        self.db_master_port = db_master_port
-        self.db_slave_host = db_slave_host
-        self.db_slave_port = db_slave_port
-        
+    def __init__(self, repl_user=None, repl_password=None, datacopying_is_required=False,
+                 mysqlusername_master=None, mysqlpassword_master=None, mysqlhost_master='127.0.0.1', mysqlport_master=3306,
+                 max_attempts_master=10, sleep_time_master=5,
+                 container_is_up_master=None,
+                 location_type_master='local',
+                 service_name_master=None,
+                 local_path_master=None, remote_path_master=None, remote_user_master=None, remote_host_master=None, private_key_path_master=None, remote_password_master=None,
+                 local_mysql_path_master=None, local_mysqldump_path_master=None, remote_mysql_path_master=None, remote_mysqldump_path_master=None,
+                 mysqlusername_slave=None, mysqlpassword_slave=None, mysqlhost_slave='127.0.0.1', mysqlport_slave=3306,
+                 max_attempts_slave=10, sleep_time_slave=5,
+                 container_is_up_slave=None,
+                 location_type_slave='local',
+                 service_name_slave=None,
+                 local_path_slave=None, remote_path_slave=None, remote_user_slave=None, remote_host_slave=None, private_key_path_slave=None, remote_password_slave=None,
+                 local_mysql_path_slave=None, local_mysqldump_path_slave=None, remote_mysql_path_slave=None, remote_mysqldump_path_slave=None):
+
+        # 定义复制的独有参数
         # 定义主从数据库的复制用户和密码
         self.repl_user = repl_user
-        self.repl_password = repl_password        
-        
+        self.repl_password = repl_password
+        self.datacopying_is_required = datacopying_is_required
+
+        # 定义主从数据库的连接参数，包括主数据库的主机地址，端口号、用户名和密码
+
+        self.mysqlhost_master = mysqlhost_master
+        self.mysqlport_master = mysqlport_master
+        self.mysqlusername_master = mysqlusername_master
+        self.mysqlpassword_master = mysqlpassword_master
+
+        # 定义试错次数和时间，管理主数据库需要，创建容器也需要
+        self.max_attempts_master = max_attempts_master
+        self.sleep_time_master = sleep_time_master
+
         # 定义容器是否存在的标志，如果容器不存在，则会自动创建容器
         self.container_is_up_master = container_is_up_master
-        self.container_is_up_slave = container_is_up_slave
-        
+
         # 以下只有容器不存在的情况下才需要传入参数
-        #定义要创建的容器是本地还是远程
-        self.location_type = location_type        
+
         # 定义创建容器的初始化参数
-        #定义创建容器的yaml文件及其相关文件的地址
-        self.local_path = local_path
-        self.remote_path = remote_path
-        #定义如果远程创建容器，则需提供远程主机地址，用户名和密钥或密码
-        self.remote_host = remote_host
-        self.remote_user = remote_user
-        self.private_key_path = private_key_path
-        self.remote_password = remote_password
-        # 定义主从服务名称，以分别创建主从容器
+
+        # 定义要创建的容器是本地还是远程
+        self.location_type_master = location_type_master
+
+        # 定义服务名称，以创建容器
         self.service_name_master = service_name_master
-        self.service_name_slave = service_name_slave
-        #定义创建远程容器的尝试次数和时间
-        self.max_attempts = max_attempts
-        self.sleep_time = sleep_time
+
+        # 定义创建容器的yaml文件及其相关文件的地址
+        self.local_path_master = local_path_master
+        self.remote_path_master = remote_path_master
+        # 定义如果远程创建容器，则需提供远程主机地址，用户名和密钥或密码
+        self.remote_host_master = remote_host_master
+        self.remote_user_master = remote_user_master
+        self.private_key_path_master = private_key_path_master
+        self.remote_password_master = remote_password_master
+
         # MySQL 和 mysqldump 命令的绝对路径，以便对数据库进行导入和导出操作
-        self.local_mysql_path = local_mysql_path
-        self.local_mysqldump_path = local_mysqldump_path
-        self.remote_mysql_path = remote_mysql_path
-        self.remote_mysqldump_path = remote_mysqldump_path
-        
-        self.db_master = self.get_db_master()        
+        self.local_mysql_path_master = local_mysql_path_master
+        self.local_mysqldump_path_master = local_mysqldump_path_master
+        self.remote_mysql_path_master = remote_mysql_path_master
+        self.remote_mysqldump_path_master = remote_mysqldump_path_master
+
+        # 定义从数据库的连接参数，包括主数据库的主机地址，端口号、用户名和密码
+
+        self.mysqlhost_slave = mysqlhost_slave
+        self.mysqlport_slave = mysqlport_slave
+        self.mysqlusername_slave = mysqlusername_slave
+        self.mysqlpassword_slave = mysqlpassword_slave
+
+        # 定义试错次数和时间，管理从数据库需要，创建容器也需要
+        self.max_attempts_slave = max_attempts_slave
+        self.sleep_time_slave = sleep_time_slave
+
+        # 定义容器是否存在的标志，如果容器不存在，则会自动创建容器
+        self.container_is_up_slave = container_is_up_slave
+
+        # 以下只有容器不存在的情况下才需要传入参数
+
+        # 定义创建容器的初始化参数
+
+        # 定义要创建的容器是本地还是远程
+        self.location_type_slave = location_type_slave
+
+        # 定义服务名称，以创建容器
+        self.service_name_slave = service_name_slave
+
+        # 定义创建容器的yaml文件及其相关文件的地址
+        self.local_path_slave = local_path_slave
+        self.remote_path_slave = remote_path_slave
+        # 定义如果远程创建容器，则需提供远程主机地址，用户名和密钥或密码
+        self.remote_user_slave = remote_user_slave
+        self.remote_host_slave = remote_host_slave
+        self.private_key_path_slave = private_key_path_slave
+        self.remote_password_slave = remote_password_slave
+
+        # MySQL 和 mysqldump 命令的绝对路径，以便对数据库进行导入和导出操作
+        self.local_mysql_path_slave = local_mysql_path_slave
+        self.local_mysqldump_path_slave = local_mysqldump_path_slave
+        self.remote_mysql_path_slave = remote_mysql_path_slave
+        self.remote_mysqldump_path_slave = remote_mysqldump_path_slave
+
+        self.db_master = self.get_db_master()
         self.db_slave = self.get_db_slave()
-        
-      
 
-    
-    
     def get_db_master(self):
-        return MySQLDatabase(self.user_master, self.password_master,  self.db_master_host,self.db_master_port, container_is_up=self.container_is_up_master,
-                             location_type=self.location_type, service_name=self.service_name_master,remote_host=self.remote_host, remote_user=self.remote_user, 
-                             private_key_path=self.private_key_path,remote_password=self.remote_password,max_attempts=self.max_attempts, sleep_time=self.sleep_time,
-                             local_mysql_path=self.local_mysql_path, local_mysqldump_path=self.local_mysqldump_path,
-                             remote_mysql_path=self.remote_mysql_path, remote_mysqldump_path=self.remote_mysqldump_path
-                             )
+        db = MySQLDatabase(mysqlusername=self.mysqlusername_master, mysqlpassword=self.mysqlpassword_master, mysqlhost=self.mysqlhost_master, mysqlport=self.mysqlport_master,
+                             container_is_up=self.container_is_up_master,
+                             service_name=self.service_name_master,
+                             location_type=self.location_type_master,
+                             local_path=self.local_path_master, remote_path=self.remote_path_master,
+                             remote_host=self.remote_host_master, remote_user=self.remote_user_master, private_key_path=self.private_key_path_master,
+                             remote_password=self.remote_password_master, max_attempts=self.max_attempts_master, sleep_time=self.sleep_time_master,
+                             local_mysql_path=self.local_mysql_path_master, local_mysqldump_path=self.local_mysqldump_path_master,
+                             remote_mysql_path=self.remote_mysql_path_master, remote_mysqldump_path=self.remote_mysqldump_path_master)
 
+    # 连接测试
+        try:
+            with db.connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            print("Successfully connected to the master database.")
+        except Exception as e:
+            print(f"Failed to connect to the master database: {e}")
+            raise
+        
+        return db
+    
     def get_db_slave(self):
-        return MySQLDatabase(self.user_slave, self.password_slave,  self.db_slave_host,self.db_slave_port, container_is_up=self.container_is_up_slave,
-                             location_type=self.location_type, service_name=self.service_name_master,remote_host=self.remote_host, remote_user=self.remote_user, 
-                             private_key_path=self.private_key_path,remote_password=self.remote_password,max_attempts=self.max_attempts, sleep_time=self.sleep_time,
-                             local_mysql_path=self.local_mysql_path, local_mysqldump_path=self.local_mysqldump_path,
-                             remote_mysql_path=self.remote_mysql_path, remote_mysqldump_path=self.remote_mysqldump_path)
+        db = MySQLDatabase(mysqlusername=self.mysqlusername_slave, mysqlpassword=self.mysqlpassword_slave, mysqlhost=self.mysqlhost_slave, mysqlport=self.mysqlport_slave,
+                             container_is_up=self.container_is_up_slave,
+                             service_name=self.service_name_slave,
+                             location_type=self.location_type_slave,
+                             local_path=self.local_path_slave, remote_path=self.remote_path_slave,
+                             remote_host=self.remote_host_slave, remote_user=self.remote_user_slave, private_key_path=self.private_key_path_slave,
+                             remote_password=self.remote_password_slave, max_attempts=self.max_attempts_slave, sleep_time=self.sleep_time_slave,
+                             local_mysql_path=self.local_mysql_path_slave, local_mysqldump_path=self.local_mysqldump_path_slave,
+                             remote_mysql_path=self.remote_mysql_path_slave, remote_mysqldump_path=self.remote_mysqldump_path_slave)
 
+     # 连接测试
+        try:
+            with db.connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            print("Successfully connected to the slave database.")
+        except Exception as e:
+            print(f"Failed to connect to the slave database: {e}")
+            raise
+
+        return db
+    
     def get_master_status(self):
         query = "SHOW MASTER STATUS;"
-        
-        # # 使用下面的sqlalchemy连接查询会报错
-        # try:
-        #     with self.db_master.engine.connect() as conn:
-        #         result = conn.execute(query).fetchone()
-        #     if result:
-        #         binlog_file = result[0]  # 根据实际返回的字段顺序来提取
-        #         binlog_position = result[1]  # 根据实际返回的字段顺序来提取
-        #         print("Master status retrieved successfully.")
-        #         return binlog_file, binlog_position
-        # except Exception as e:
-        #     print(f"Failed to get master status: {e}")
-        # return None, None
+
         try:
             # 使用 pymysql 直接执行查询
-            connection = pymysql.connect(host=self.db_master_host,
-                                         user=self.user_master,
-                                         password=self.password_master,
-                                         port=self.db_master_port)
-            with connection.cursor() as cursor:
+            with self.db_master.connection.cursor() as cursor:
                 cursor.execute(query)
                 result = cursor.fetchone()
             if result:
@@ -119,144 +178,185 @@ class MySQLReplication:
         except Exception as e:
             print(f"Failed to get master status: {e}")
         finally:
-            connection.close()
+            self.db_master.connection.close()
         return None, None
 
-
     def import_data_from_db_master_to_db_slave(self):
-        
+
         try:
-            self.db_master.export_all_databases_to_sql_file('/tmp/dump_replication.sql')          
-            print("Data exported from master successfully.")     
+            self.db_master.export_all_databases_to_sql_file('/tmp/dump_replication.sql')
+            print("Data exported from master successfully.")
         except Exception as e:
             print(f"Failed to export data from master: {e}")
             raise
-        
+
         try:
             self.db_slave.import_all_databases_from_sql_file('/tmp/dump_replication.sql')
-            print("Data imported to slave successfully.")    
+            print("Data imported to slave successfully.")
         except Exception as e:
             print(f"Failed to import data to replica: {e}")
             raise
-        
 
-    def configure_replication(self, binlog_file, binlog_position):
-        query = (
-            f"CHANGE MASTER TO MASTER_HOST='{self.db_master_host}',"
-            f"MASTER_USER='{self.repl_user}',"
-            f"MASTER_PASSWORD='{self.repl_password}',"
-            f"MASTER_LOG_FILE='{binlog_file}',"
-            f"MASTER_LOG_POS={binlog_position};"
-        )
-       
+    def set_up_replication(self):
+        binlog_file, binlog_position = self.get_master_status()
+
+        if binlog_file is None or binlog_position is None:
+            raise Exception("Failed to get master status.")
+
+        replication_query = f"""
+            CHANGE MASTER TO
+            MASTER_HOST='{self.mysqlhost_master}',
+            MASTER_PORT={self.mysqlport_master},
+            MASTER_USER='{self.repl_user}',
+            MASTER_PASSWORD='{self.repl_password}',
+            MASTER_LOG_FILE='{binlog_file}',
+            MASTER_LOG_POS={binlog_position};
+        """
+
         try:
-            with self.db_slave.engine.connect() as conn:
-                conn.execute(query)
-                print("Replication configured successfully.")
+            with self.db_slave.connection.cursor() as cursor:
+                cursor.execute("STOP SLAVE IO_THREAD;")  # 停止I/O线程
+                cursor.execute(replication_query)
+                cursor.execute("START SLAVE;")
+            self.db_slave.connection.commit()
+            print("Replication set up successfully.")
         except Exception as e:
-            print(f"Failed to configure replication: {e}")
-            
+            print(f"Failed to set up replication: {e}")
+            raise
+        finally:
+            self.db_slave.connection.close()
 
-    def start_replication(self):
-        query = "START SLAVE;"
-        
+    def check_replication_status(self):
+        query = "SHOW PROCESSLIST;"
         try:
-            with self.db_slave.engine.connect() as conn:
-                conn.execute(query)
-            print("Replication started successfully.")
-        except Exception as e:
-            print(f"Failed to start replication: {e}")
-            
-    def check_db_slave_status(self):
-        max_attempts = 10
-        attempts = 0
-        wait_time = self.sleep_time
-
-        while attempts < max_attempts:
-            time.sleep(wait_time)
-            query = "SHOW SLAVE STATUS;"
-            
-            try:
-                with self.db_slave.engine.connect() as conn:
-                    conn.execute(query)
-                    result = conn.fetchone()
-                if result and result['Slave_IO_Running'] == 'Yes' and result['Slave_SQL_Running'] == 'Yes':
-                    print("Replication is running successfully.")
-                    break
+            with self.db_slave.connection.cursor() as cursor:
+                print("Executing query:", query)
+                cursor.execute(query)
+                result = cursor.fetchall()
+                if result:
+                    print("Replication status retrieved successfully.")
+                    for row in result:
+                        print(row)
                 else:
-                    print("Replication is not yet running. Waiting...")
-                    attempts += 1
-                    if attempts == max_attempts:
-                        print("Maximum attempts reached. Exiting...")
-                        break
-                    time.sleep(self.sleep_time)
-                    wait_time *= 2
-            except Exception as e:
-                print(f"Failed to check slave status: {e}")
-
-    def main(self):
-        try:
-            self.db_master.create_user_and_grant_privileges(self.repl_user, self.repl_password, pri_database='*', pri_table='*', pri_host='%')
-            self.import_data_from_db_master_to_db_slave()
-            binlog_file, binlog_position = self.get_master_status()            
-            if binlog_file and binlog_position:
-                self.configure_replication(binlog_file, binlog_position)
-                self.start_replication()
-                self.check_db_slave_status()
-            else:
-                print("Failed to retrieve binlog file and position. Exiting...")
+                    print("No replication status found.")
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"Failed to check replication status: {e}")
+        finally:
+            print("Connection closed:", self.db_slave.connection._closed)
+            if hasattr(self.db_slave, 'connection') and not self.db_slave.connection._closed:
+                self.db_slave.connection.close()
+                
 
 if __name__ == "__main__":
-    # 定义主从数据库的连接参数，包括主从数据库的用户名和密码
-        user_master = 'zym'
-        password_master = '123456'
-        user_slave = 'zym'
-        password_slave = '123456'
-        # 定义主从数据库的连接参数，包括主从数据库的主机地址和端口
-        db_master_host = '47.103.135.26'
-        db_master_port = 3300
-        db_slave_host = '47.103.135.26'
-        db_slave_port = 8300
-        
-        # 定义主从数据库的复制用户和密码
-        repl_user = 'repl_user'
-        repl_password = '123456'        
-        
-        # 定义容器是否存在的标志，如果容器不存在，则会自动创建容器
-        container_is_up_master = True
-        container_is_up_slave = True
-        
-        # 以下只有容器不存在的情况下才需要传入参数
-        #定义要创建的容器是本地还是远程
-        location_type = 'remote'        
-        # 定义创建容器的初始化参数
-        #定义创建容器的yaml文件及其相关文件的地址
-        local_path = '/home/zym/container/'
-        remote_path = '/home/zym/'
-        #定义如果远程创建容器，则需提供远程主机地址，用户名和密钥或密码
-        remote_host = '47.103.135.26'
-        remote_user = 'zym'
-        private_key_path = '/home/zym/.ssh/new_key'
-        remote_password = "alyfwqok"
-        # 定义主从服务名称，以分别创建主从容器
-        service_name_master = 'p0_s_mysql_master_1'
-        service_name_slave = 'p0_s_mysql_slave_1'
-        #定义创建远程容器的尝试次数和时间
-        max_attempts = 10
-        sleep_time = 5
-        # MySQL 和 mysqldump 命令的绝对路径，以便对数据库进行导入和导出操作
-        local_mysql_path = '/home/zym/anaconda3/bin/mysql'
-        local_mysqldump_path = '/home/zym/anaconda3/bin/mysqldump'
-        remote_mysql_path = '/home/zym/anaconda3/bin/mysql'
-        remote_mysqldump_path = '/home/zym/anaconda3/bin/mysqldump'
 
-        replication = MySQLReplication(user_master=user_master, password_master=password_master, user_slave=user_slave, password_slave=password_slave,
-                                   local_path=local_path, remote_path=remote_path, service_name_master=service_name_master, service_name_slave=service_name_slave, 
-                                   remote_host=remote_host,remote_user=remote_user,remote_password=remote_password,private_key_path=private_key_path,
-                                   container_is_up_master=container_is_up_master, container_is_up_slave=container_is_up_slave,location_type=location_type,
-                                   db_master_host=db_master_host, db_master_port=db_master_port, db_slave_host=db_slave_host,db_slave_port=db_slave_port,
-                                   repl_user=repl_user, repl_password=repl_password,local_mysql_path=local_mysql_path, 
-                                   local_mysqldump_path=local_mysqldump_path,remote_mysql_path=remote_mysql_path, remote_mysqldump_path=remote_mysqldump_path)
-        replication.main()
+    # 定义主从数据库的复制用户和密码
+    repl_user = 'repl_user'
+    repl_password = '123456' 
+    datacopying_is_required = True
+    
+    #主机参数  
+    
+    #数据库连接参数
+    mysqlusername_master = "myrt"
+    mysqlpassword_master="123456"
+    # mysqlhost = "127.0.0.1"
+    mysqlhost_master = "47.103.135.26"
+    mysqlport_master = 3300
+    
+    #定义创建远程容器的尝试次数和时间
+    max_attempts_master = 10
+    sleep_time_master = 5  
+    
+    # 要连接的数据库容器是否开启
+    container_is_up_master = True
+    
+    # 以下只有容器不存在的情况下才需要传入参数
+    
+    #定义要创建的服务（容器）
+    service_name_master = ["p0_s_mysql_master_1"]
+    
+    #定义要创建的容器是本地还是远程    
+    location_type_master = 'remote'
+        
+    #定义创建容器的yaml文件及其相关文件的地址
+    local_path_master = '/home/zym/container/'
+    remote_path_master = '/home/zym/'
+    # 定义远程连接时所需要的主机地址，用户名和密钥或密码
+    remote_host_master = '47.103.135.26'
+    remote_user_master = 'zym'
+    private_key_path_master = '/home/zym/.ssh/new_key'
+    remote_password_master = "alyfwqok"
+    
+    # MySQL 和 mysqldump 命令的绝对路径，以便对数据库进行导入和导出操作
+    local_mysql_path_master = '/home/zym/anaconda3/bin/mysql'
+    local_mysqldump_path_master = '/home/zym/anaconda3/bin/mysqldump'
+    remote_mysql_path_master = '/home/zym/anaconda3/bin/mysql'
+    remote_mysqldump_path_master = '/home/zym/anaconda3/bin/mysqldump'
+    
+    #从机参数                
+    
+    #数据库连接参数
+    mysqlusername_slave = "myrt"
+    mysqlpassword_slave="123456"
+    # mysqlhost = "127.0.0.1"
+    mysqlhost_slave = "47.103.135.26"
+    mysqlport_slave = 8300
+    
+    #定义创建远程容器的尝试次数和时间
+    max_attempts_slave= 10
+    sleep_time_slave = 5  
+    # 要连接的数据库容器是否开启
+    container_is_up_slave = True
+    
+    # 以下只有容器不存在的情况下才需要传入参数
+    
+    #定义要创建的服务（容器）
+    service_name_slave = ["p0_s_mysql_slave_1"]
+    
+    #定义要创建的容器是本地还是远程    
+    location_type_slave = 'remote'
+        
+    #定义创建容器的yaml文件及其相关文件的地址
+    local_path_slave = '/home/zym/container/'
+    remote_path_slave = '/home/zym/'
+    # 定义远程连接时所需要的主机地址，用户名和密钥或密码
+    remote_host_slave = '47.103.135.26'
+    remote_user_slave = 'zym'
+    private_key_path_slave = '/home/zym/.ssh/new_key'
+    remote_password_slave = "alyfwqok"
+    
+    # MySQL 和 mysqldump 命令的绝对路径，以便对数据库进行导入和导出操作
+    local_mysql_path_slave = '/home/zym/anaconda3/bin/mysql'
+    local_mysqldump_path_slave = '/home/zym/anaconda3/bin/mysqldump'
+    remote_mysql_path_slave = '/home/zym/anaconda3/bin/mysql'
+    remote_mysqldump_path_slave = '/home/zym/anaconda3/bin/mysqldump'
+    
+    
+
+    replication = MySQLReplication(repl_user=repl_user, repl_password=repl_password, datacopying_is_required = datacopying_is_required,
+                mysqlusername_master=mysqlusername_master, mysqlpassword_master=mysqlpassword_master, mysqlhost_master=mysqlhost_master, mysqlport_master=mysqlport_master, 
+                max_attempts_master=max_attempts_master, sleep_time_master=sleep_time_master, 
+                container_is_up_master=container_is_up_master,
+                location_type_master=location_type_master,
+                service_name_master=service_name_master, 
+                local_path_master=local_path_master,remote_path_master=remote_path_master, remote_user_master=remote_user_master,remote_host_master=remote_host_master,private_key_path_master=private_key_path_master, remote_password_master=remote_password_master,
+                local_mysql_path_master=local_mysql_path_master, local_mysqldump_path_master=local_mysqldump_path_master,remote_mysql_path_master=remote_mysql_path_master, remote_mysqldump_path_master=remote_mysqldump_path_master,
+                mysqlusername_slave=mysqlusername_slave, mysqlpassword_slave=mysqlpassword_slave, mysqlhost_slave=mysqlhost_slave, mysqlport_slave=mysqlport_slave,                  
+                max_attempts_slave=max_attempts_slave, sleep_time_slave=sleep_time_slave, 
+                container_is_up_slave=container_is_up_slave,
+                location_type_slave=location_type_slave,
+                service_name_slave=service_name_slave, 
+                local_path_slave=local_path_slave,remote_path_slave=remote_path_slave, remote_user_slave=remote_user_slave,remote_host_slave=remote_host_slave,private_key_path_slave=private_key_path_slave, remote_password_slave=remote_password_slave,
+                local_mysql_path_slave=local_mysql_path_slave, local_mysqldump_path_slave=local_mysqldump_path_slave,remote_mysql_path_slave=remote_mysql_path_slave, remote_mysqldump_path_slave=remote_mysqldump_path_slave)
+    
+    # 创建复制用户
+    replication.db_master.create_user_and_grant_privileges(repl_user,repl_password)
+    # 数据导入从 master 到 slave
+    if datacopying_is_required:
+        replication.import_data_from_db_master_to_db_slave()
+
+    # 设置复制
+    replication.set_up_replication()
+
+    # 检查复制状态
+    replication.check_replication_status()
