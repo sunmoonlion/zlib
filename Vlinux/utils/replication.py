@@ -15,7 +15,7 @@ from mysql import MySQLDatabase
 from container.container import Container
 
 class MySQLReplication:
-    def __init__(self, repl_user=None, repl_password=None, datacopying_is_required=False,
+    def __init__(self, repl_user=None, repl_password=None, master_datacopying_is_required=False,slave_datacopying_is_required=False,
                  mysqlusername_master=None, mysqlpassword_master=None, mysqlhost_master='127.0.0.1', mysqlport_master=3306,
                  max_attempts_master=10, sleep_time_master=5,
                  container_is_up_master=None,
@@ -35,7 +35,8 @@ class MySQLReplication:
         # 定义主从数据库的复制用户和密码
         self.repl_user = repl_user
         self.repl_password = repl_password
-        self.datacopying_is_required = datacopying_is_required
+        self.master_datacopying_is_required = master_datacopying_is_required
+        self.slave_datacopying_is_required = slave_datacopying_is_required
 
         # 定义主从数据库的连接参数，包括主数据库的主机地址，端口号、用户名和密码
 
@@ -227,24 +228,27 @@ class MySQLReplication:
             self.db_slave.connection.close()
 
     def check_replication_status(self):
-        query = "SHOW PROCESSLIST;"
+        query = "SHOW SLAVE STATUS;"
         try:
             with self.db_slave.connection.cursor() as cursor:
-                print("Executing query:", query)
                 cursor.execute(query)
-                result = cursor.fetchall()
+                result = cursor.fetchone()
                 if result:
                     print("Replication status retrieved successfully.")
-                    for row in result:
-                        print(row)
+                    print("Result:", result)
+                    io_running = result["Slave_IO_Running"]
+                    sql_running = result["Slave_SQL_Running"]
+                    if io_running == "Yes" and sql_running == "Yes":
+                        print("Replication status: Running")
+                    else:
+                        print("Replication status: Not running")
                 else:
                     print("No replication status found.")
+        except pymysql.MySQLError as e:
+            print(f"MySQL error occurred: {e.args[0]}, {e.args[1]}")
         except Exception as e:
-            print(f"Failed to check replication status: {e}")
-        finally:
-            print("Connection closed:", self.db_slave.connection._closed)
-            if hasattr(self.db_slave, 'connection') and not self.db_slave.connection._closed:
-                self.db_slave.connection.close()
+            print(f"An unexpected error occurred while checking replication status: {e}")
+
                 
 
 if __name__ == "__main__":
@@ -252,7 +256,8 @@ if __name__ == "__main__":
     # 定义主从数据库的复制用户和密码
     repl_user = 'repl_user'
     repl_password = '123456' 
-    datacopying_is_required = True
+    master_datacopying_is_required = True
+    slave_datacopying_is_required = True
     
     #主机参数  
     
@@ -268,7 +273,7 @@ if __name__ == "__main__":
     sleep_time_master = 5  
     
     # 要连接的数据库容器是否开启
-    container_is_up_master = True
+    container_is_up_master = False
     
     # 以下只有容器不存在的情况下才需要传入参数
     
@@ -298,15 +303,14 @@ if __name__ == "__main__":
     #数据库连接参数
     mysqlusername_slave = "myrt"
     mysqlpassword_slave="123456"
-    # mysqlhost = "127.0.0.1"
-    mysqlhost_slave = "47.103.135.26"
+    mysqlhost_slave = "127.0.0.1"
     mysqlport_slave = 8300
     
     #定义创建远程容器的尝试次数和时间
     max_attempts_slave= 10
     sleep_time_slave = 5  
     # 要连接的数据库容器是否开启
-    container_is_up_slave = True
+    container_is_up_slave = False
     
     # 以下只有容器不存在的情况下才需要传入参数
     
@@ -314,13 +318,13 @@ if __name__ == "__main__":
     service_name_slave = ["p0_s_mysql_slave_1"]
     
     #定义要创建的容器是本地还是远程    
-    location_type_slave = 'remote'
+    location_type_slave = 'local'
         
     #定义创建容器的yaml文件及其相关文件的地址
     local_path_slave = '/home/zym/container/'
     remote_path_slave = '/home/zym/'
     # 定义远程连接时所需要的主机地址，用户名和密钥或密码
-    remote_host_slave = '47.103.135.26'
+    remote_host_slave = '47.100.19.119'
     remote_user_slave = 'zym'
     private_key_path_slave = '/home/zym/.ssh/new_key'
     remote_password_slave = "alyfwqok"
@@ -333,7 +337,7 @@ if __name__ == "__main__":
     
     
 
-    replication = MySQLReplication(repl_user=repl_user, repl_password=repl_password, datacopying_is_required = datacopying_is_required,
+    replication = MySQLReplication(repl_user=repl_user, repl_password=repl_password, master_datacopying_is_required=master_datacopying_is_required, slave_datacopying_is_required= slave_datacopying_is_required,
                 mysqlusername_master=mysqlusername_master, mysqlpassword_master=mysqlpassword_master, mysqlhost_master=mysqlhost_master, mysqlport_master=mysqlport_master, 
                 max_attempts_master=max_attempts_master, sleep_time_master=sleep_time_master, 
                 container_is_up_master=container_is_up_master,
@@ -349,14 +353,19 @@ if __name__ == "__main__":
                 local_path_slave=local_path_slave,remote_path_slave=remote_path_slave, remote_user_slave=remote_user_slave,remote_host_slave=remote_host_slave,private_key_path_slave=private_key_path_slave, remote_password_slave=remote_password_slave,
                 local_mysql_path_slave=local_mysql_path_slave, local_mysqldump_path_slave=local_mysqldump_path_slave,remote_mysql_path_slave=remote_mysql_path_slave, remote_mysqldump_path_slave=remote_mysqldump_path_slave)
     
+    # 
+    
     # 创建复制用户
     replication.db_master.create_user_and_grant_privileges(repl_user,repl_password)
+
+    # 主数据库是否要导入数据
+    if master_datacopying_is_required:
+        replication.db_master.import_database('mydb',"/home/zym/web_meiduo_mall_docker/backend/mysql/master_db2.sql")
     # 数据导入从 master 到 slave
-    if datacopying_is_required:
+    if slave_datacopying_is_required:
         replication.import_data_from_db_master_to_db_slave()
 
     # 设置复制
     replication.set_up_replication()
-
     # 检查复制状态
     replication.check_replication_status()
