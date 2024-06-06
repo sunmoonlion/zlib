@@ -255,8 +255,11 @@ if __name__ == "__main__":
 
     # 定义主从数据库的复制用户和密码
     repl_user = 'repl_user'
-    repl_password = '123456' 
+    repl_password = '123456'
+    
+    #是否往主机复制数据 
     master_datacopying_is_required = True
+    #是否从主机往从机复制数据
     slave_datacopying_is_required = True
     
     #主机参数  
@@ -353,7 +356,6 @@ if __name__ == "__main__":
                 local_path_slave=local_path_slave,remote_path_slave=remote_path_slave, remote_user_slave=remote_user_slave,remote_host_slave=remote_host_slave,private_key_path_slave=private_key_path_slave, remote_password_slave=remote_password_slave,
                 local_mysql_path_slave=local_mysql_path_slave, local_mysqldump_path_slave=local_mysqldump_path_slave,remote_mysql_path_slave=remote_mysql_path_slave, remote_mysqldump_path_slave=remote_mysqldump_path_slave)
     
-    # 
     
     # 创建复制用户
     replication.db_master.create_user_and_grant_privileges(repl_user,repl_password)
