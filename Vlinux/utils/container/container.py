@@ -425,35 +425,13 @@ attention:
 
 if __name__ == "__main__":
     
-    # #定义要创建的容器是本地还是远程    
-    # location_type = 'remote'
-    
-    # #定义多个服务名称
-    # # service_names_batch = ["p0_s_mysql_master_1"]
-    # # service_names_batch = ["p0_s_redis_master_1"]
-    # service_names_batch = ["p0_s_mysql_master_1","p0_s_redis_master_1"]
-    
-    # #定义创建容器的yaml文件及其相关文件的地址
-    # local_path = '/home/zym/container/'
-    # #远程路径中可以有yaml文件，也可以没有，如果没有，那么，它必须是个文件夹
-    # remote_path = '/home/zym/'
-    
-    # # 定义远程连接时所需要的主机地址，用户名和密钥或密码
-    # remote_host = '47.103.135.26'   
-    # remote_user = 'zym'
-    # private_key_path = '/home/zym/.ssh/new_key'
-    # remote_password = "alyfwqok"
-    # #定义创建远程容器的尝试次数和时间
-    # max_attempts = 10
-    # sleep_time = 5
-    
     #定义要创建的容器是本地还是远程    
-    location_type = 'local'
+    location_type = 'remote'
     
     #定义多个服务名称
-    # service_names_batch = ["p0_s_mysql_slave_1"]
-    # service_names_batch = ["p0_s_redis_slave_1"]
-    service_names_batch = ["p0_s_mysql_slave_1","p0_s_redis_slave_1"]
+    # service_names_batch = ["p0_s_mysql_master_1"]
+    # service_names_batch = ["p0_s_redis_master_1"]
+    service_names_batch = ["p0_s_mysql_master_1","p0_s_redis_master_1"]
     
     #定义创建容器的yaml文件及其相关文件的地址
     local_path = '/home/zym/container/'
@@ -468,6 +446,28 @@ if __name__ == "__main__":
     #定义创建远程容器的尝试次数和时间
     max_attempts = 10
     sleep_time = 5
+    
+    # #定义要创建的容器是本地还是远程    
+    # location_type = 'local'
+    
+    # #定义多个服务名称
+    # # service_names_batch = ["p0_s_mysql_slave_1"]
+    # # service_names_batch = ["p0_s_redis_slave_1"]
+    # service_names_batch = ["p0_s_mysql_slave_1","p0_s_redis_slave_1"]
+    
+    # #定义创建容器的yaml文件及其相关文件的地址
+    # local_path = '/home/zym/container/'
+    # #远程路径中可以有yaml文件，也可以没有，如果没有，那么，它必须是个文件夹
+    # remote_path = '/home/zym/'
+    
+    # # 定义远程连接时所需要的主机地址，用户名和密钥或密码
+    # remote_host = '47.103.135.26'   
+    # remote_user = 'zym'
+    # private_key_path = '/home/zym/.ssh/new_key'
+    # remote_password = "alyfwqok"
+    # #定义创建远程容器的尝试次数和时间
+    # max_attempts = 10
+    # sleep_time = 5
     
     #创建远程实例并启动批量服务 用ssh密钥连接
     db_remote_batch = Container(location_type=location_type, 
