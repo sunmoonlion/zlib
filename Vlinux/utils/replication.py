@@ -307,7 +307,7 @@ if __name__ == "__main__":
     mysqlusername_slave = "myrt"
     mysqlpassword_slave="123456"
     mysqlhost_slave = "127.0.0.1"
-    mysqlport_slave = 8300
+    mysqlport_slave = 4300
     
     #定义创建远程容器的尝试次数和时间
     max_attempts_slave= 10
