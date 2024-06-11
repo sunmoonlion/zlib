@@ -430,8 +430,8 @@ if __name__ == "__main__":
     
     #定义多个服务名称
     # service_names_batch = ["p0_s_mysql_master_1"]
-    service_names_batch = ["p0_s_redis_master_1"]
-    # service_names_batch = ["p0_s_mysql_master_1","p0_s_redis_master_1"]
+    # service_names_batch = ["p0_s_redis_master_1"]
+    service_names_batch = ["p0_s_mysql_master_1","p0_s_redis_master_1"]
     
     #定义创建容器的yaml文件及其相关文件的地址
     local_path = '/home/zym/container/'
@@ -469,8 +469,8 @@ if __name__ == "__main__":
     
     #定义多个服务名称
     # service_names_batch = ["p0_s_mysql_slave_1"]
-    service_names_batch = ["p0_s_redis_slave_1"]
-    # service_names_batch = ["p0_s_mysql_slave_1","p0_s_redis_slave_1"]
+    # service_names_batch = ["p0_s_redis_slave_1"]
+    service_names_batch = ["p0_s_mysql_slave_1","p0_s_redis_slave_1"]
     
     #定义创建容器的yaml文件及其相关文件的地址
     local_path = '/home/zym/container/'
@@ -507,8 +507,8 @@ if __name__ == "__main__":
     
     #定义多个服务名称
     # service_names_batch = ["p0_s_mysql_master_1"]
-    service_names_batch = ["p0_s_redis_master_1"]
-    # service_names_batch = ["p0_s_mysql_master_1","p0_s_redis_master_1"]
+    # service_names_batch = ["p0_s_redis_master_1"]
+    service_names_batch = ["p0_s_mysql_master_1","p0_s_redis_master_1"]
     
     #定义创建容器的yaml文件及其相关文件的地址
     local_path = '/home/zym/container/'
@@ -546,8 +546,8 @@ if __name__ == "__main__":
     
     #定义多个服务名称
     # service_names_batch = ["p0_s_mysql_slave_1"]
-    service_names_batch = ["p0_s_redis_slave_1"]
-    # service_names_batch = ["p0_s_mysql_slave_1","p0_s_redis_slave_1"]
+    # service_names_batch = ["p0_s_redis_slave_1"]
+    service_names_batch = ["p0_s_mysql_slave_1","p0_s_redis_slave_1"]
     
     #定义创建容器的yaml文件及其相关文件的地址
     local_path = '/home/zym/container/'

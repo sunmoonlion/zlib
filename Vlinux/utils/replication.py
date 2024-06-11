@@ -276,7 +276,7 @@ if __name__ == "__main__":
     sleep_time_master = 5  
     
     # 要连接的数据库容器是否开启
-    container_is_up_master = False
+    container_is_up_master = True
     
     # 以下只有容器不存在的情况下才需要传入参数
     
@@ -313,7 +313,7 @@ if __name__ == "__main__":
     max_attempts_slave= 10
     sleep_time_slave = 5  
     # 要连接的数据库容器是否开启
-    container_is_up_slave = False
+    container_is_up_slave = True
     
     # 以下只有容器不存在的情况下才需要传入参数
     
