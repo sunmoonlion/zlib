@@ -258,9 +258,9 @@ if __name__ == "__main__":
     repl_password = '123456'
     
     #是否往主机复制数据 
-    master_datacopying_is_required = True
+    master_datacopying_is_required = False
     #是否从主机往从机复制数据
-    slave_datacopying_is_required = True
+    slave_datacopying_is_required = False
     
     #主机参数  
     
